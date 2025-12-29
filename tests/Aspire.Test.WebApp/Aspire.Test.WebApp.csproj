@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aspire.Test.ServiceDefaults\Aspire.Test.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

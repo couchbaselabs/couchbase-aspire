@@ -1,0 +1,17 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+
+[*.{xml,csproj,slnx,props,targets}]
+indent_size = 2
+
+[nuget.config]
+indent_size = 2
+
+[*.{yaml,yml}]
+indent_size = 2

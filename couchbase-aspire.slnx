@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="tests/Aspire.Test.WebApp/Aspire.Test.WebApp.csproj" />
+  <Project Path="src/Couchbase.Aspire.Hosting/Couchbase.Aspire.Hosting.csproj" />
+  <Project Path="tests/Aspire.Test.AppHost/Aspire.Test.AppHost.csproj" />
+  <Project Path="tests/Aspire.Test.ServiceDefaults/Aspire.Test.ServiceDefaults.csproj" />
+</Solution>
