@@ -12,7 +12,8 @@ var couchbaseGroup2 = couchbase.AddServerGroup("couchbase-group2", CouchbaseServ
     .WithReplicas(2);
 
 var testBucket = couchbase.AddBucket("test-bucket", bucketName: "test")
-    .WithMemoryQuota(200); // Optional memory quota, default is 100MB
+    .WithMemoryQuota(200) // Optional memory quota, default is 100MB
+    .WithReplicas(0);
 
 builder.AddProject<Projects.Aspire_Test_WebApp>("aspire-test-webapp")
     .WithReference(couchbase).WaitFor(testBucket);

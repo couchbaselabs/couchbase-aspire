@@ -151,4 +151,15 @@ public static class CouchbaseBucketBuilderExtensions
             return Task.CompletedTask;
         });
     }
+
+    public static IResourceBuilder<CouchbaseBucketResource> WithReplicas(this IResourceBuilder<CouchbaseBucketResource> builder, int? replicas)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.Replicas = replicas;
+            return Task.CompletedTask;
+        });
+    }
 }

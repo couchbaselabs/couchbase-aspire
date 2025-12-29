@@ -9,6 +9,8 @@ public class CouchbaseBucketSettings
     public BucketType BucketType { get; set; } = BucketType.Couchbase;
 
     public int? MemoryQuotaMegabytes { get; set; }
+
+    public int? Replicas { get; set; }
 }
 
 /// <summary>

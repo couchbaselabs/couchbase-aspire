@@ -116,6 +116,11 @@ internal class CouchbaseBucketInitializer(
                 { "ramQuota", (settings.MemoryQuotaMegabytes ?? DefaultMemoryQuotaMegabytes).ToString(CultureInfo.InvariantCulture) }
             };
 
+            if (settings.Replicas is { } replicas)
+            {
+                dictionary.Add("replicaNumber", replicas.ToString(CultureInfo.InvariantCulture));
+            }
+
             var request = new HttpRequestMessage(HttpMethod.Post, uri)
             {
                 Headers = {
