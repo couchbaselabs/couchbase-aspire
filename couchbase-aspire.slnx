@@ -3,6 +3,7 @@
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
   </Folder>
+  <Project Path="src/Couchbase.Aspire.Client/Couchbase.Aspire.Client.csproj" />
   <Project Path="src/Couchbase.Aspire.Hosting/Couchbase.Aspire.Hosting.csproj" />
   <Project Path="src/Couchbase.HealthChecks/Couchbase.HealthChecks.csproj" />
   <Project Path="tests/Aspire.Test.AppHost/Aspire.Test.AppHost.csproj" />

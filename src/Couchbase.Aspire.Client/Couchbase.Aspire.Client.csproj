@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>$(AllTargetFrameworks)</TargetFrameworks>
+    <IsPackable>true</IsPackable>
+    <PackageTags>aspire integration client component cloud couchbase</PackageTags>
+    <Description>A Couchbase client that integrates with Aspire, including health checks, logging, and telemetry.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Couchbase.Extensions.DependencyInjection" />
+    <PackageReference Include="Couchbase.Extensions.OpenTelemetry" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Couchbase.HealthChecks\Couchbase.HealthChecks.csproj" />
+  </ItemGroup>
+
+</Project>

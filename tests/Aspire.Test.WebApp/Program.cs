@@ -1,8 +1,10 @@
 using Aspire.Test.WebApp.Components;
+using Couchbase.Aspire.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+builder.AddCouchbaseClient("couchbase");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

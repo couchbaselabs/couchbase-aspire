@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Couchbase.Aspire.Client\Couchbase.Aspire.Client.csproj" />
     <ProjectReference Include="..\Aspire.Test.ServiceDefaults\Aspire.Test.ServiceDefaults.csproj" />
   </ItemGroup>
 

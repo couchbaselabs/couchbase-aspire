@@ -1,5 +1,8 @@
-﻿@page "/counter"
+@page "/counter"
+@using Couchbase.Core.Exceptions.KeyValue
+@using Couchbase.Extensions.DependencyInjection
 @rendermode InteractiveServer
+@inject IClusterProvider ClusterProvider
 
 <PageTitle>Counter</PageTitle>
 
@@ -7,13 +10,67 @@
 
 <p role="status">Current count: @currentCount</p>
 
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger" role="alert">
+        An error occurred: @error
+    </div>
+}
+
 <button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
 
 @code {
-    private int currentCount = 0;
+    private ulong currentCount = 0;
+    private string? error = null;
 
-    private void IncrementCount()
+    protected override async Task OnInitializedAsync()
     {
-        currentCount++;
+        try
+        {
+            var cluster = await ClusterProvider.GetClusterAsync();
+            var bucket = await cluster.BucketAsync("test");
+            var collection = bucket.DefaultCollection();
+
+            var result = await collection.GetAsync("counter", new Couchbase.KeyValue.GetOptions()
+                .Transcoder(new Couchbase.Core.IO.Transcoders.LegacyTranscoder()));
+
+            currentCount = result.ContentAs<ulong>();
+        }
+        catch (DocumentNotFoundException)
+        {
+            currentCount = 0;
+        }
+        catch (Exception ex)
+        {
+            error = ex.ToString();
+        }
+    }
+
+    private async Task IncrementCount()
+    {
+        try
+        {
+            var cluster = await ClusterProvider.GetClusterAsync();
+            var bucket = await cluster.BucketAsync("test");
+            var collection = bucket.DefaultCollection();
+
+            try
+            {
+                var result = await collection.Binary.IncrementAsync("counter");
+
+                currentCount = result.Content;
+            }
+            catch (DocumentNotFoundException)
+            {
+                await collection.InsertAsync("counter", 1UL, new Couchbase.KeyValue.InsertOptions()
+                    .Transcoder(new Couchbase.Core.IO.Transcoders.LegacyTranscoder()));
+
+                currentCount = 1;
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.ToString();
+        }
     }
 }
