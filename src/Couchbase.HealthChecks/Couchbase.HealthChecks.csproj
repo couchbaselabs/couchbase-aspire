@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>$(DefaultTargetFramework);netstandard2.1;net472</TargetFrameworks>
+    <PackageTags>HealthCheck;HealthChecks;Health;Couchbase</PackageTags>
+    <Description>Couchbase.HealthChecks is the health check package for Couchbase.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Couchbase.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net6.0'))">
+    <Compile Remove="TaskExtensions.cs" />
+    <None Include="TaskExtensions.cs" />
+  </ItemGroup>
+
+</Project>

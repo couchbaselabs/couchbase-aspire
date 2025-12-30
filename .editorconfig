@@ -15,3 +15,7 @@ indent_size = 2
 
 [*.{yaml,yml}]
 indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped
+dotnet_diagnostic.IDE0161.severity = suggestion

@@ -1,12 +1,11 @@
 using Couchbase.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace Couchbase.Aspire.Hosting.HealthChecks;
+namespace Couchbase.HealthChecks;
 
-internal class CouchbaseHealthCheck(
-    IServiceProvider serviceProvider,
-    Func<IServiceProvider, CancellationToken, Task<ICluster>> clusterFactory,
-    ServiceType pingServiceTypes = ServiceType.KeyValue,
+public class CouchbaseHealthCheck(
+    Func<CancellationToken, ValueTask<ICluster>> clusterFactory,
+    ServiceType[]? pingServiceTypes = null,
     string? bucketName = null)
     : IHealthCheck
 {
@@ -19,8 +18,10 @@ internal class CouchbaseHealthCheck(
         = 2;
 #endif
 
+    private readonly ServiceType[] _pingServiceTypes = pingServiceTypes ?? [ServiceType.KeyValue];
     private ICluster? _cluster;
 
+    /// <inheritdoc />
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         try
@@ -29,11 +30,11 @@ internal class CouchbaseHealthCheck(
             {
                 try
                 {
-                    var cluster = _cluster ??= await clusterFactory(serviceProvider, cancellationToken).ConfigureAwait(false);
+                    var cluster = _cluster ??= await clusterFactory(cancellationToken).ConfigureAwait(false);
 
                     await cluster.PingAsync(new PingOptions()
-                            .ServiceTypes(pingServiceTypes)
-                            .CancellationToken(cancellationToken));
+                        .ServiceTypes(_pingServiceTypes)
+                        .CancellationToken(cancellationToken));
 
                     if (bucketName is not null)
                     {

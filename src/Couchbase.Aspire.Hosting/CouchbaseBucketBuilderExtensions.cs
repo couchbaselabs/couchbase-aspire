@@ -1,7 +1,6 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Couchbase.Aspire.Hosting;
-using Couchbase.Aspire.Hosting.HealthChecks;
 using Couchbase.Aspire.Hosting.Initialization;
 using Couchbase.Management.Buckets;
 using Microsoft.Extensions.DependencyInjection;
