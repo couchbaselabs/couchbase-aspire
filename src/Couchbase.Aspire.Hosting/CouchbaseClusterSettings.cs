@@ -18,6 +18,8 @@ public class CouchbaseClusterSettings
     /// Per-node memory quotas for the Couchbase services.
     /// </summary>
     public CouchbaseMemoryQuotas? MemoryQuotas { get; set; }
+
+    internal List<Action<IResourceBuilder<CouchbaseServerResource>>> ContainerConfigurationCallbacks { get; } = [];
 }
 
 /// <summary>

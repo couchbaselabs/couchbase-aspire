@@ -106,6 +106,11 @@ public static class CouchbaseClusterBuilderExtensions
                                 server.WithEndpoint(CouchbaseEndpointNames.Management, endpoint => endpoint.Port = managementPort);
                             }
                         }
+
+                        foreach (var configurationCallback in settings.ContainerConfigurationCallbacks)
+                        {
+                            configurationCallback(server);
+                        }
                     }
                 }
             });
@@ -198,6 +203,69 @@ public static class CouchbaseClusterBuilderExtensions
         return builder.WithSettings(context =>
         {
             context.Settings.ManagementPort = port;
+        });
+    }
+
+    private static IResourceBuilder<CouchbaseClusterResource> WithContainerConfiguration(this IResourceBuilder<CouchbaseClusterResource> builder,
+        Action<IResourceBuilder<CouchbaseServerResource>> callback)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(callback);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.ContainerConfigurationCallbacks.Add(callback);
+        });
+    }
+
+    /// <summary>
+    /// Allows overriding the image registry on Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="registry">Registry value.</param>
+    /// <returns>The <see cref="IResourceBuilder{CouchbaseClusterResource}"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithImageRegistry(this IResourceBuilder<CouchbaseClusterResource> builder, string? registry)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithContainerConfiguration(serverBuilder =>
+        {
+            serverBuilder.WithImageRegistry(registry);
+        });
+    }
+
+    /// <summary>
+    /// Allows overriding the image on a Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="image">Image value.</param>
+    /// <param name="tag">Tag value.</param>
+    /// <returns>The <see cref="IResourceBuilder{CouchbaseClusterResource}"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithImage<T>(this IResourceBuilder<CouchbaseClusterResource> builder, string image, string? tag = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(image);
+
+        return builder.WithContainerConfiguration(serverBuilder =>
+        {
+            serverBuilder.WithImage(image, tag);
+        });
+    }
+
+    /// <summary>
+    /// Allows overriding the image tag on a Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="tag">Tag value.</param>
+    /// <returns>The <see cref="IResourceBuilder{CouchbaseClusterResource}"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithImageTag(this IResourceBuilder<CouchbaseClusterResource> builder, string tag)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(tag);
+
+        return builder.WithContainerConfiguration(serverBuilder =>
+        {
+            serverBuilder.WithImageTag(tag);
         });
     }
 
