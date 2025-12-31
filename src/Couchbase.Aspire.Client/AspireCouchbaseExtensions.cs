@@ -1,4 +1,5 @@
 using Aspire;
+using Couchbase.Compression.Snappier;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Metrics.Otel;
 using Couchbase.Extensions.Tracing.Otel.Tracing;
@@ -105,6 +106,9 @@ public static class AspireCouchbaseExtensions
 
             // Disable the built-in log-based metrics to avoid duplication with OpenTelemetry
             options.LoggingMeterOptions.Enabled(false);
+
+            // Enable compression on the wire by default
+            options.WithSnappyCompression();
 
             var configurationOptionsSection = configSection.GetSection("ClusterOptions");
             var namedConfigurationOptionsSection = namedConfigSection.GetSection("ClusterOptions");
