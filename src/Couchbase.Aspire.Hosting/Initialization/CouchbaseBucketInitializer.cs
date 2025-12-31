@@ -1,8 +1,11 @@
+using System.ComponentModel;
 using System.Globalization;
+using System.Reflection;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Eventing;
 using Couchbase.Aspire.Hosting;
+using Couchbase.KeyValue;
 using Microsoft.Extensions.Logging;
 
 namespace Couchbase.Aspire.Hosting.Initialization;
@@ -112,13 +115,41 @@ internal class CouchbaseBucketInitializer(
             var dictionary = new Dictionary<string, string?>
             {
                 { "name", bucket.BucketName },
-                { "bucketType", settings.BucketType.ToString().ToLowerInvariant() },
+                { "bucketType", GetEnumValueString(settings.BucketType) },
                 { "ramQuota", (settings.MemoryQuotaMegabytes ?? DefaultMemoryQuotaMegabytes).ToString(CultureInfo.InvariantCulture) }
             };
 
-            if (settings.Replicas is { } replicas)
+            if (settings.Replicas is int replicas)
             {
                 dictionary.Add("replicaNumber", replicas.ToString(CultureInfo.InvariantCulture));
+            }
+            if (settings.FlushEnabled is bool flushEnabled)
+            {
+                dictionary.Add("flushEnabled", flushEnabled ? "1" : "0");
+            }
+            if (settings.StorageBackend is Management.Buckets.StorageBackend storageBackend)
+            {
+                dictionary.Add("storageBackend", GetEnumValueString(storageBackend));
+            }
+            if (settings.CompressionMode is Management.Buckets.CompressionMode compressionMode)
+            {
+                dictionary.Add("compressionMode", GetEnumValueString(compressionMode));
+            }
+            if (settings.ConflictResolutionType is Management.Buckets.ConflictResolutionType conflictResolutionType)
+            {
+                dictionary.Add("conflictResolutionType", GetEnumValueString(conflictResolutionType));
+            }
+            if (settings.MinimumDurabilityLevel is DurabilityLevel durabilityLevel)
+            {
+                dictionary.Add("durabilityMinLevel", GetEnumValueString(durabilityLevel));
+            }
+            if (settings.EvictionPolicy is Management.Buckets.EvictionPolicyType evictionPolicy)
+            {
+                dictionary.Add("evictionPolicy", GetEnumValueString(evictionPolicy));
+            }
+            if (settings.MaximumTimeToLiveSeconds is int maxTtl)
+            {
+                dictionary.Add("maxTTL", maxTtl.ToString(CultureInfo.InvariantCulture));
             }
 
             var request = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -135,5 +166,24 @@ internal class CouchbaseBucketInitializer(
         response.EnsureSuccessStatusCode();
 
         logger.LogInformation("Created bucket '{BucketName}'.", bucket.BucketName);
+    }
+
+    private static string GetEnumValueString<TEnum>(TEnum value) where TEnum : struct, Enum
+    {
+        var valueString = Enum.GetName(value);
+        if (valueString is not null)
+        {
+            var fieldInfo = typeof(TEnum).GetField(valueString, BindingFlags.Public | BindingFlags.Static);
+            if (fieldInfo is not null)
+            {
+                var attribute = fieldInfo.GetCustomAttribute<DescriptionAttribute>();
+                if (!string.IsNullOrEmpty(attribute?.Description))
+                {
+                    return attribute.Description;
+                }
+            }
+        }
+
+        return (valueString ?? value.ToString()).ToLowerInvariant();
     }
 }

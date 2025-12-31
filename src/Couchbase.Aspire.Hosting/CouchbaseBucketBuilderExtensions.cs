@@ -2,14 +2,25 @@ using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Couchbase.Aspire.Hosting;
 using Couchbase.Aspire.Hosting.Initialization;
+using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Couchbase.Aspire.Hosting;
 
+/// <summary>
+/// Extensions for building Couchbase bucket resources.
+/// </summary>
 public static class CouchbaseBucketBuilderExtensions
 {
+    /// <summary>
+    /// Adds a bucket to the Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">The cluster builder.</param>
+    /// <param name="name">The name of the bucket resource.</param>
+    /// <param name="bucketName">The name of the bucket. If <c>null</c>, the bucket name will default to the resource name.</param>
+    /// <returns>The resource builder for the bucket.</returns>
     public static IResourceBuilder<CouchbaseBucketResource> AddBucket(this IResourceBuilder<CouchbaseClusterResource> builder,
         [ResourceName] string name,
         string? bucketName = null)
@@ -101,18 +112,12 @@ public static class CouchbaseBucketBuilderExtensions
             });
     }
 
-    public static IResourceBuilder<CouchbaseBucketResource> WithSettings(this IResourceBuilder<CouchbaseBucketResource> builder, CouchbaseBucketSettings settings)
-    {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(settings);
-
-        return builder.WithAnnotation(new CouchbaseBucketSettingsCallbackAnnotation(context =>
-        {
-            context.Settings = settings;
-            return Task.CompletedTask;
-        }));
-    }
-
+    /// <summary>
+    /// Add a synchronous callback to configure bucket settings.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="settingsCallback">Callback to customize the settings.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
     public static IResourceBuilder<CouchbaseBucketResource> WithSettings(this IResourceBuilder<CouchbaseBucketResource> builder, Action<CouchbaseBucketSettingsCallbackContext> settingsCallback)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -121,6 +126,12 @@ public static class CouchbaseBucketBuilderExtensions
         return builder.WithAnnotation(new CouchbaseBucketSettingsCallbackAnnotation(settingsCallback));
     }
 
+    /// <summary>
+    /// Add an asynchronous callback to configure bucket settings.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="settingsCallback">Callback to customize the settings.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
     public static IResourceBuilder<CouchbaseBucketResource> WithSettings(this IResourceBuilder<CouchbaseBucketResource> builder, Func<CouchbaseBucketSettingsCallbackContext, Task> settingsCallback)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -129,6 +140,12 @@ public static class CouchbaseBucketBuilderExtensions
         return builder.WithAnnotation(new CouchbaseBucketSettingsCallbackAnnotation(settingsCallback));
     }
 
+    /// <summary>
+    /// Sets the type of the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="bucketType">The type of the bucket.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
     public static IResourceBuilder<CouchbaseBucketResource> WithBucketType(this IResourceBuilder<CouchbaseBucketResource> builder, BucketType bucketType)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -140,6 +157,12 @@ public static class CouchbaseBucketBuilderExtensions
         });
     }
 
+    /// <summary>
+    /// Sets the memory quota of the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="quotaMegabytes">The quota in megabytes. If <c>null</c>, defaults to 100MB.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
     public static IResourceBuilder<CouchbaseBucketResource> WithMemoryQuota(this IResourceBuilder<CouchbaseBucketResource> builder, int? quotaMegabytes)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -151,6 +174,12 @@ public static class CouchbaseBucketBuilderExtensions
         });
     }
 
+    /// <summary>
+    /// sets the number of replicas for the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="replicas">The number of replicas. If <c>null</c>, defaults to the cluster's default, typically 1.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
     public static IResourceBuilder<CouchbaseBucketResource> WithReplicas(this IResourceBuilder<CouchbaseBucketResource> builder, int? replicas)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -158,6 +187,131 @@ public static class CouchbaseBucketBuilderExtensions
         return builder.WithSettings(context =>
         {
             context.Settings.Replicas = replicas;
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Sets if flush is enabled for the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="enabled">If flush is enabled. If <c>null</c>, defaults to the cluster's default, typically <c>false</c>.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseBucketResource> WithFlushEnabled(this IResourceBuilder<CouchbaseBucketResource> builder, bool? enabled = true)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.FlushEnabled = enabled;
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Sets the storage backend for the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="backend">The storage backend. If <c>null</c>, defaults to the cluster's default, typically <see cref="StorageBackend.Couchstore"/>.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    /// <remarks>
+    /// Note that only <see cref="StorageBackend.Couchstore"/> is supported for Community Edition.
+    /// </remarks>
+    public static IResourceBuilder<CouchbaseBucketResource> WithStorageBackend(this IResourceBuilder<CouchbaseBucketResource> builder, StorageBackend? backend)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.StorageBackend = backend;
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Sets the compression mode for the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="mode">The compression mode. If <c>null</c>, defaults to the cluster's default, typically <see cref="CompressionMode.Passive"/>.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseBucketResource> WithCompressionMode(this IResourceBuilder<CouchbaseBucketResource> builder, CompressionMode? mode)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.CompressionMode = mode;
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Sets the conflict resolution type for the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="type">The conflict resolution type. If <c>null</c>, defaults to the cluster's default, typically <see cref="ConflictResolutionType.SequenceNumber"/>.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseBucketResource> WithConflictResolutionType(this IResourceBuilder<CouchbaseBucketResource> builder, ConflictResolutionType? type)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.ConflictResolutionType = type;
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Sets the minimum durability level for the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="minimumLevel">The minimum durability level. If <c>null</c>, defaults to the cluster's default, typically <see cref="DurabilityLevel.None"/>.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseBucketResource> WithMinimumDurabilityLevel(this IResourceBuilder<CouchbaseBucketResource> builder, DurabilityLevel? minimumLevel)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.MinimumDurabilityLevel = minimumLevel;
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Sets the eviction policy for the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="policyType">
+    /// Eviction policy. If <c>null</c>, defaults to the cluster's default, typically <see cref="EvictionPolicyType.ValueOnly"/>
+    /// for Couchbase buckets or <see cref="EvictionPolicyType.NoEviction"/> for ephemeral buckets.
+    /// </param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseBucketResource> WithEvictionPolicy(this IResourceBuilder<CouchbaseBucketResource> builder, EvictionPolicyType? policyType)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.EvictionPolicy = policyType;
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Sets the maximum TTL for documents in the bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="maximumTtlSeconds">Time to live, in seconds. If <c>null</c>, defaults to the cluster's default, typically 0 (no expiration).</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseBucketResource> WithMaximumTimeToLive(this IResourceBuilder<CouchbaseBucketResource> builder, int? maximumTtlSeconds)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.MaximumTimeToLiveSeconds = maximumTtlSeconds;
             return Task.CompletedTask;
         });
     }

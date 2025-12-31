@@ -1,4 +1,6 @@
 using Couchbase.Aspire.Hosting;
+using Couchbase.KeyValue;
+using Couchbase.Management.Buckets;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -13,7 +15,17 @@ var couchbaseGroup2 = couchbase.AddServerGroup("couchbase-group2", CouchbaseServ
 
 var testBucket = couchbase.AddBucket("test-bucket", bucketName: "test")
     .WithMemoryQuota(200) // Optional memory quota, default is 100MB
-    .WithReplicas(0);
+    .WithConflictResolutionType(ConflictResolutionType.Timestamp)
+    .WithMinimumDurabilityLevel(DurabilityLevel.MajorityAndPersistToActive)
+    .WithEvictionPolicy(EvictionPolicyType.FullEviction)
+    .WithCompressionMode(CompressionMode.Active);
+
+var cacheBucket = couchbase.AddBucket("cache-bucket", bucketName: "cache")
+    .WithBucketType(BucketType.Ephemeral)
+    .WithReplicas(0)
+    .WithEvictionPolicy(EvictionPolicyType.NotRecentlyUsed)
+    .WithFlushEnabled()
+    .WithMaximumTimeToLive(300);
 
 builder.AddProject<Projects.Aspire_Test_WebApp>("aspire-test-webapp")
     .WithReference(couchbase).WaitFor(testBucket);
