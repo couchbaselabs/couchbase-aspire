@@ -68,8 +68,10 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
 
     internal ReferenceExpression BuildConnectionString(string? bucketName = null)
     {
+        var useSsl = this.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>();
+
         var builder = new ReferenceExpressionBuilder();
-        builder.AppendLiteral("couchbase://");
+        builder.AppendLiteral(useSsl ? "couchbases://" : "couchbase://");
 
         var servers = _serverGroups.Values
             .Where(p => p.Services.HasFlag(CouchbaseServices.Data))
@@ -78,7 +80,7 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
         var first = true;
         foreach (var server in servers)
         {
-            var hostAndPort = server.DataHostAndPort;
+            var hostAndPort = useSsl ? server.DataSecureHostAndPort : server.DataHostAndPort;
             if (hostAndPort is not null)
             {
                 if (first)

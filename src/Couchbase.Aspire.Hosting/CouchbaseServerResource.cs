@@ -16,6 +16,7 @@ public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironme
         if (parent.Services.HasFlag(CouchbaseServices.Data))
         {
             DataEndpoint = new EndpointReference(this, CouchbaseEndpointNames.Data);
+            DataSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.DataSecure);
         }
     }
 
@@ -36,18 +37,20 @@ public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironme
 
     public EndpointReference? DataEndpoint { get; }
 
+    public EndpointReference? DataSecureEndpoint { get; }
+
     /// <summary>
     /// Gets the host and port endpoint reference for this resource.
     /// </summary>
     public EndpointReferenceExpression Host => ManagementEndpoint.Property(EndpointProperty.Host);
 
     /// <summary>
-    /// Gets the host and port endpoint reference for this resource.
-    /// </summary>
-    public EndpointReferenceExpression ManagementHostAndPort => ManagementEndpoint.Property(EndpointProperty.HostAndPort);
-
-    /// <summary>
-    /// Gets the host and port endpoint reference for this resource.
+    /// Gets the data host and port endpoint reference for this resource.
     /// </summary>
     public EndpointReferenceExpression? DataHostAndPort => DataEndpoint?.Property(EndpointProperty.HostAndPort);
+
+    /// <summary>
+    /// Gets the secure data host and port endpoint reference for this resource.
+    /// </summary>
+    public EndpointReferenceExpression? DataSecureHostAndPort => DataSecureEndpoint?.Property(EndpointProperty.HostAndPort);
 }

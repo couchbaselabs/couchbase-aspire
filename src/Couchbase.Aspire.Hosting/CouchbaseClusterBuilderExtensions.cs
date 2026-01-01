@@ -1,8 +1,10 @@
+using System.Security.Cryptography.X509Certificates;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Couchbase.Aspire.Hosting;
 using Couchbase.Aspire.Hosting.Initialization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace Couchbase.Aspire.Hosting;
@@ -29,6 +31,8 @@ public static class CouchbaseClusterBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(name);
+
+        builder.Services.TryAddSingleton<CouchbaseNodeCertificateProvider>();
 
         // don't use special characters in the password, since it goes into a URI
         var passwordParameter = password?.Resource ?? ParameterResourceBuilderExtensions.CreateDefaultPasswordParameter(builder, $"{name}-password", special: false);
@@ -99,10 +103,15 @@ public static class CouchbaseClusterBuilderExtensions
                             initialNodeFound = true;
                             server.WithAnnotation<CouchbaseInitialNodeAnnotation>();
 
-                            if (settings.ManagementPort is { } managementPort)
+                            if (settings.ManagementPort is int managementPort)
                             {
                                 // For the first server, set the static management port number, if configured
                                 server.WithEndpoint(CouchbaseEndpointNames.Management, endpoint => endpoint.Port = managementPort);
+                            }
+                            if (settings.SecureManagementPort is int secureManagementPort)
+                            {
+                                // For the first server, set the static management port number, if configured
+                                server.WithEndpoint(CouchbaseEndpointNames.ManagementSecure, endpoint => endpoint.Port = secureManagementPort);
                             }
                         }
 
@@ -122,8 +131,16 @@ public static class CouchbaseClusterBuilderExtensions
                     var options = new ClusterOptions()
                         .WithConnectionString(connectionString ?? throw new InvalidOperationException("Connection string is unavailable"));
 
-                    options.UserName = await cluster.UserNameReference.GetValueAsync(ct);
-                    options.Password = await cluster.PasswordParameter.GetValueAsync(ct);
+                    options.UserName = await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false);
+                    options.Password = await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false);
+
+                    var certificationAuthority = cluster.GetClusterCertificationAuthority();
+                    if (certificationAuthority is { TrustCertificate: true })
+                    {
+                        var callback = certificationAuthority.CreateValidationCallback();
+                        options.HttpCertificateCallbackValidation = callback;
+                        options.KvCertificateCallbackValidation = callback;
+                    }
 
                     return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
                 },
@@ -151,8 +168,7 @@ public static class CouchbaseClusterBuilderExtensions
                     {
                         Url = "/",
                         DisplayText = "Web Console",
-                        Endpoint = cluster.Servers.FirstOrDefault(p => p.Services.HasFlag(CouchbaseServices.Data))?
-                            .GetEndpoint(CouchbaseEndpointNames.Management)
+                        Endpoint = cluster.Servers.FirstOrDefault(CouchbaseResourceExtensions.IsInitialNode)?.GetManagementEndpoint()
                     });
                 }
             });
@@ -195,6 +211,12 @@ public static class CouchbaseClusterBuilderExtensions
         });
     }
 
+    /// <summary>
+    /// Sets a static management port for the Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="port">Port number for the secure management endpoint, or <c>null</c> to assign a random port.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
     public static IResourceBuilder<CouchbaseClusterResource> WithManagementPort(this IResourceBuilder<CouchbaseClusterResource> builder, int? port)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -202,6 +224,22 @@ public static class CouchbaseClusterBuilderExtensions
         return builder.WithSettings(context =>
         {
             context.Settings.ManagementPort = port;
+        });
+    }
+
+    /// <summary>
+    /// Sets a static secure management port for the Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="port">Port number for the secure management endpoint, or <c>null</c> to assign a random port.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithSecureManagementPort(this IResourceBuilder<CouchbaseClusterResource> builder, int? port)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithSettings(context =>
+        {
+            context.Settings.SecureManagementPort = port;
         });
     }
 
@@ -268,6 +306,42 @@ public static class CouchbaseClusterBuilderExtensions
         });
     }
 
+    /// <summary>
+    /// Enables TLS for cluster communications using a root certification authority.
+    /// </summary>
+    /// <param name="builder">Builder for the couchbase cluster.</param>
+    /// <param name="caCertificate">Certification authority certificate to use. Must include a private key.</param>
+    /// <param name="certificateChain">Optional certificate chain to include with the CA certificate.</param>
+    /// <param name="trustCertificate">If the certificate must be explicitly trusted for initialization and health check operations.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    /// <remarks>
+    /// The root certificate must be trusted by any application connecting to the cluster. It must also be trusted
+    /// by the host running Aspire if <paramref name="trustCertificate"/> is <c>false</c>.
+    /// </remarks>
+    public static IResourceBuilder<CouchbaseClusterResource> WithRootCertificationAuthority(this IResourceBuilder<CouchbaseClusterResource> builder,
+        X509Certificate2 caCertificate, X509Certificate2Collection? certificateChain = null, bool trustCertificate = false)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(caCertificate);
+
+        if (!caCertificate.HasPrivateKey)
+        {
+            throw new InvalidOperationException($"{nameof(caCertificate)} must include a private key.");
+        }
+
+        var annotation = new CouchbaseCertificateAuthorityAnnotation(caCertificate)
+        {
+            TrustCertificate = trustCertificate
+        };
+
+        if (certificateChain is not null)
+        {
+            annotation.CertificateChain.AddRange(certificateChain);
+        }
+
+        return builder.WithAnnotation(annotation, ResourceAnnotationMutationBehavior.Replace);
+    }
+
     private static void AddClusterInitializer(IResourceBuilder<CouchbaseClusterResource> cluster)
     {
         var initializerResource = new CouchbaseClusterInitializerResource(
@@ -290,9 +364,16 @@ public static class CouchbaseClusterBuilderExtensions
 
         var httpClientName = $"{cluster.Resource.Name}-initializer-client";
         cluster.ApplicationBuilder.Services.AddHttpClient(httpClientName)
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                SslOptions =
+                {
+                    // Trust the CA certificate, applicable
+                    RemoteCertificateValidationCallback =
+                        cluster.Resource.GetClusterCertificationAuthority() is { TrustCertificate: true } annotation
+                            ? annotation.CreateValidationCallback()
+                            : null
+                }
             });
 
         cluster.ApplicationBuilder.Eventing.Subscribe<InitializeResourceEvent>(initializerResource, (@event, ct) =>

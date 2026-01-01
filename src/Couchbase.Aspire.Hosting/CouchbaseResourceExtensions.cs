@@ -33,6 +33,17 @@ internal static class CouchbaseResourceExtensions
         return settingsContext.Settings;
     }
 
+    public static CouchbaseCertificateAuthorityAnnotation? GetClusterCertificationAuthority(this CouchbaseClusterResource cluster)
+    {
+        if (cluster.TryGetLastAnnotation<CouchbaseCertificateAuthorityAnnotation>(out var annotation) &&
+            annotation.Certificate is not null)
+        {
+            return annotation;
+        }
+
+        return null;
+    }
+
     public static async Task<CouchbaseBucketSettings> GetBucketSettingsAsync(this CouchbaseBucketResource cluster, DistributedApplicationExecutionContext executionContext,
         CancellationToken cancellationToken = default)
     {
@@ -50,4 +61,9 @@ internal static class CouchbaseResourceExtensions
 
     public static bool IsInitialNode(this CouchbaseServerResource server) =>
         server.HasAnnotationOfType<CouchbaseInitialNodeAnnotation>();
+
+    public static EndpointReference GetManagementEndpoint(this CouchbaseServerResource server, bool preferInsecure = false) =>
+        !preferInsecure && server.Cluster.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>()
+            ? server.GetEndpoint(CouchbaseEndpointNames.ManagementSecure)
+            : server.GetEndpoint(CouchbaseEndpointNames.Management);
 }

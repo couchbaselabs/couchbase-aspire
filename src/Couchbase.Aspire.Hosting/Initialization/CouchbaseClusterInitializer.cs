@@ -87,9 +87,14 @@ internal sealed class CouchbaseClusterInitializer(
                 State = KnownResourceStates.Starting,
             });
 
-            // Begin initializing the primary cluster
-            var authenticationHeader = await BuildAuthenticationHeaderAsync(cluster, cancellationToken).ConfigureAwait(false);
+            // Load certificates before any other operations
+            await LoadNodeCertificatesAsync(initialNode, cancellationToken).ConfigureAwait(false);
+
+            // Initialize the cluster on the primary node
             await InitializeClusterAsync(initialNode, cancellationToken).ConfigureAwait(false);
+
+            // Set primary node alternate addresses
+            var authenticationHeader = await BuildAuthenticationHeaderAsync(cluster, cancellationToken).ConfigureAwait(false);
             await SetNodeAlternateAddresses(initialNode, authenticationHeader, cancellationToken).ConfigureAwait(false);
 
             // Initialize additional nodes in parallel
@@ -146,7 +151,7 @@ internal sealed class CouchbaseClusterInitializer(
     {
         logger.LogInformation("Initializing cluster '{ClusterName}' on node '{NodeName}'...", cluster.Name, initialNode.Name);
 
-        var secureEndpoint = initialNode.GetEndpoint(CouchbaseEndpointNames.ManagementSecure);
+        var endpoint = initialNode.GetManagementEndpoint();
 
         var response = await RetryPolicy.ExecuteAsync(async ct =>
         {
@@ -154,7 +159,7 @@ internal sealed class CouchbaseClusterInitializer(
 
             var quotas = settings.MemoryQuotas ?? new();
 
-            var uri = await CreateUriAsync(secureEndpoint, "/clusterInit", ct).ConfigureAwait(false);
+            var uri = await CreateUriAsync(endpoint, "/clusterInit", ct).ConfigureAwait(false);
             var request = new HttpRequestMessage(HttpMethod.Post, uri)
             {
                 Content = new FormUrlEncodedContent(
@@ -188,11 +193,14 @@ internal sealed class CouchbaseClusterInitializer(
 
         logger.LogInformation("Adding node {NodeName} to cluster '{ClusterName}'...", addNode.Name, cluster.Name);
 
-        var secureEndpoint = initialNode.GetEndpoint(CouchbaseEndpointNames.ManagementSecure);
+        // Load certificates on the node first
+        await LoadNodeCertificatesAsync(addNode, cancellationToken).ConfigureAwait(false);
+
+        var endpoint = initialNode.GetManagementEndpoint();
 
         var response = await RetryPolicy.ExecuteAsync(async ct =>
         {
-            var uri = await CreateUriAsync(secureEndpoint, "/controller/addNode", ct).ConfigureAwait(false);
+            var uri = await CreateUriAsync(endpoint, "/controller/addNode", ct).ConfigureAwait(false);
             var request = new HttpRequestMessage(HttpMethod.Post, uri)
             {
                 Headers =
@@ -219,11 +227,11 @@ internal sealed class CouchbaseClusterInitializer(
         await SetNodeAlternateAddresses(addNode, authenticationHeader, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task SetNodeAlternateAddresses(CouchbaseServerResource node, AuthenticationHeaderValue authenticationHeader, CancellationToken cancellationToken)
+    public async Task SetNodeAlternateAddresses(CouchbaseServerResource node, AuthenticationHeaderValue? authenticationHeader, CancellationToken cancellationToken)
     {
         logger.LogInformation("Setting node {NodeName} alternate addresses...", node.Name);
 
-        var secureEndpoint = node.GetEndpoint(CouchbaseEndpointNames.ManagementSecure);
+        var endpoint = node.GetManagementEndpoint();
 
         var response = await RetryPolicy.ExecuteAsync(async ct =>
         {
@@ -247,7 +255,7 @@ internal sealed class CouchbaseClusterInitializer(
                 }
             }
 
-            var uri = await CreateUriAsync(secureEndpoint, "/node/controller/setupAlternateAddresses/external", ct).ConfigureAwait(false);
+            var uri = await CreateUriAsync(endpoint, "/node/controller/setupAlternateAddresses/external", ct).ConfigureAwait(false);
             var request = new HttpRequestMessage(HttpMethod.Put, uri)
             {
                 Headers =
@@ -266,16 +274,54 @@ internal sealed class CouchbaseClusterInitializer(
         }
     }
 
+    public async Task LoadNodeCertificatesAsync(CouchbaseServerResource node, CancellationToken cancellationToken)
+    {
+        if (!node.Cluster.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>())
+        {
+            // No certificates to load
+            return;
+        }
+
+        logger.LogInformation("Loading node {NodeName} certificates...", node.Name);
+
+        // Don't use the secure endpoint until we load certificates we trust
+        var endpoint = node.GetManagementEndpoint(preferInsecure: true);
+
+        var response = await RetryPolicy.ExecuteAsync(async ct =>
+        {
+            var uri = await CreateUriAsync(endpoint, "/node/controller/loadTrustedCAs", ct).ConfigureAwait(false);
+
+            return await httpClient.PostAsync(uri, content: null, ct).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        }
+
+        response = await RetryPolicy.ExecuteAsync(async ct =>
+        {
+            var uri = await CreateUriAsync(endpoint, "/node/controller/reloadCertificate", ct).ConfigureAwait(false);
+
+            return await httpClient.PostAsync(uri, content: null, ct).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        }
+    }
+
     public async Task RebalanceAsync(CouchbaseServerResource initialNode, AuthenticationHeaderValue authenticationHeader,
         CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Rebalancing cluster '{ClusterName}'...", cluster.Name);
 
-        var secureEndpoint = initialNode.GetEndpoint(CouchbaseEndpointNames.ManagementSecure);
+        var endpoint = initialNode.GetManagementEndpoint();
 
         var response = await RetryPolicy.ExecuteAsync(async ct =>
         {
-            var uri = await CreateUriAsync(secureEndpoint, "/controller/rebalance", ct).ConfigureAwait(false);
+            var uri = await CreateUriAsync(endpoint, "/controller/rebalance", ct).ConfigureAwait(false);
             var request = new HttpRequestMessage(HttpMethod.Post, uri)
             {
                 Headers =
@@ -295,7 +341,7 @@ internal sealed class CouchbaseClusterInitializer(
 
         // Wait for the rebalance to complete
         RebalanceStatus? status;
-        var uri = await CreateUriAsync(secureEndpoint, "/pools/default/rebalanceProgress", cancellationToken).ConfigureAwait(false);
+        var uri = await CreateUriAsync(endpoint, "/pools/default/rebalanceProgress", cancellationToken).ConfigureAwait(false);
         do
         {
             var request = new HttpRequestMessage(HttpMethod.Get, uri)

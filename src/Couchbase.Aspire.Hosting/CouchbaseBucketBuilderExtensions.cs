@@ -52,8 +52,16 @@ public static class CouchbaseBucketBuilderExtensions
                         .WithConnectionString(connectionString ?? throw new InvalidOperationException("Connection string is unavailable"));
 
                     var cluster = bucket.Parent;
-                    options.UserName = await cluster.UserNameReference.GetValueAsync(ct);
-                    options.Password = await cluster.PasswordParameter.GetValueAsync(ct);
+                    options.UserName = await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false);
+                    options.Password = await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false);
+
+                    var certificationAuthority = cluster.GetClusterCertificationAuthority();
+                    if (certificationAuthority is { TrustCertificate: true })
+                    {
+                        var callback = certificationAuthority.CreateValidationCallback();
+                        options.HttpCertificateCallbackValidation = callback;
+                        options.KvCertificateCallbackValidation = callback;
+                    }
 
                     return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
                 },
@@ -62,9 +70,16 @@ public static class CouchbaseBucketBuilderExtensions
 
         var httpClientName = $"{name}-initializer-client";
         builder.ApplicationBuilder.Services.AddHttpClient(httpClientName)
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                SslOptions =
+                {
+                    RemoteCertificateValidationCallback =
+                        // Trust the CA certificate, applicable
+                        builder.Resource.GetClusterCertificationAuthority() is { TrustCertificate: true } annotation
+                            ? annotation.CreateValidationCallback()
+                            : null
+                }
             });
 
         return builder.ApplicationBuilder

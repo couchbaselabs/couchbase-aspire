@@ -15,6 +15,11 @@ public class CouchbaseClusterSettings
     public int? ManagementPort { get; set; }
 
     /// <summary>
+    /// Static secure management port for the Couchbase cluster.
+    /// </summary>
+    public int? SecureManagementPort { get; set; }
+
+    /// <summary>
     /// Per-node memory quotas for the Couchbase services.
     /// </summary>
     public CouchbaseMemoryQuotas? MemoryQuotas { get; set; }

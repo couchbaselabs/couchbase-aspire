@@ -77,7 +77,7 @@ internal class CouchbaseBucketInitializer(
 
         logger.LogInformation("Creating bucket '{BucketName}'...", bucket.BucketName);
 
-        var endpoint = node.GetEndpoint(CouchbaseEndpointNames.ManagementSecure);
+        var endpoint = node.GetManagementEndpoint();
         var authenticationHeader = await CouchbaseClusterInitializer.BuildAuthenticationHeaderAsync(bucket.Parent, cancellationToken)
             .ConfigureAwait(false);
 
