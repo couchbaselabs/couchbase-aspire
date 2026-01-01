@@ -362,8 +362,7 @@ public static class CouchbaseClusterBuilderExtensions
             })
             .WithParentRelationship(cluster);
 
-        var httpClientName = $"{cluster.Resource.Name}-initializer-client";
-        cluster.ApplicationBuilder.Services.AddHttpClient(httpClientName)
+        cluster.ApplicationBuilder.Services.AddHttpClient(initializerResource.Name)
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
                 SslOptions =
@@ -374,29 +373,37 @@ public static class CouchbaseClusterBuilderExtensions
                             ? annotation.CreateValidationCallback()
                             : null
                 }
+            })
+            .RemoveAllLoggers();
+
+        cluster.ApplicationBuilder.Services.AddKeyedSingleton(initializerResource,
+            static (sp, key) =>
+            {
+                var initializerResource = (CouchbaseClusterInitializerResource)key;
+
+                return new CouchbaseClusterInitializer(
+                    initializerResource,
+                    sp.GetRequiredService<DistributedApplicationExecutionContext>(),
+                    sp.GetRequiredService<IHttpClientFactory>().CreateClient(initializerResource.Name),
+                    sp.GetRequiredService<ResourceLoggerService>().GetLogger(initializerResource),
+                    sp.GetRequiredService<ResourceNotificationService>());
             });
 
         cluster.ApplicationBuilder.Eventing.Subscribe<InitializeResourceEvent>(initializerResource, (@event, ct) =>
         {
             _ = Task.Run(async () =>
             {
-                var logger = @event.Services.GetRequiredService<ResourceLoggerService>()
-                    .GetLogger(initializerResource);
-
                 try
                 {
-                    var initializer = new CouchbaseClusterInitializer(
-                        cluster.Resource,
-                        initializerResource,
-                        cluster.ApplicationBuilder.ExecutionContext,
-                        @event.Services.GetRequiredService<IHttpClientFactory>().CreateClient(httpClientName),
-                        logger,
-                        @event.Services.GetRequiredService<ResourceNotificationService>());
+                    var initializer = initializerResource.GetClusterInitializer(@event.Services);
 
                     await initializer.InitializeAsync(ct).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    var logger = @event.Services.GetRequiredService<ResourceLoggerService>()
+                        .GetLogger(initializerResource);
+
                     logger.LogError(ex, "An error occurred while initializing the Couchbase cluster.");
                     throw;
                 }

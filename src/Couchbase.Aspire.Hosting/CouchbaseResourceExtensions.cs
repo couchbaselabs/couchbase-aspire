@@ -1,12 +1,13 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Couchbase.Aspire.Hosting.Initialization;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Couchbase.Aspire.Hosting;
 
 internal static class CouchbaseResourceExtensions
 {
-    public static CouchbaseClusterInitializerResource? GetClusterInitializer(this CouchbaseClusterResource cluster)
+    public static CouchbaseClusterInitializerResource? GetClusterInitializerResource(this CouchbaseClusterResource cluster)
     {
         ArgumentNullException.ThrowIfNull(cluster);
 
@@ -16,6 +17,15 @@ internal static class CouchbaseResourceExtensions
         }
 
         return null;
+    }
+
+    public static CouchbaseClusterInitializer GetClusterInitializer(this CouchbaseClusterInitializerResource initializerResource,
+        IServiceProvider serviceProvider)
+    {
+        ArgumentNullException.ThrowIfNull(initializerResource);
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+
+        return serviceProvider.GetRequiredKeyedService<CouchbaseClusterInitializer>(initializerResource);
     }
 
     public static async Task<CouchbaseClusterSettings> GetClusterSettingsAsync(this CouchbaseClusterResource cluster, DistributedApplicationExecutionContext executionContext,

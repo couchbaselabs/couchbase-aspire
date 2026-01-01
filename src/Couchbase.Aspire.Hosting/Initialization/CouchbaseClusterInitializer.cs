@@ -7,7 +7,6 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
-using Couchbase.Aspire.Hosting;
 using Microsoft.Extensions.Logging;
 using Polly;
 using Polly.Timeout;
@@ -15,7 +14,6 @@ using Polly.Timeout;
 namespace Couchbase.Aspire.Hosting.Initialization;
 
 internal sealed class CouchbaseClusterInitializer(
-    CouchbaseClusterResource cluster,
     CouchbaseClusterInitializerResource initializer,
     DistributedApplicationExecutionContext executionContext,
     HttpClient httpClient,
@@ -43,7 +41,7 @@ internal sealed class CouchbaseClusterInitializer(
             new(CouchbaseEndpointNames.BackupSecure, "backupAPIHTTPS"),
         ]).ToFrozenDictionary();
 
-    public static readonly ResiliencePipeline<HttpResponseMessage> RetryPolicy = new ResiliencePipelineBuilder<HttpResponseMessage>()
+    private static readonly ResiliencePipeline<HttpResponseMessage> RetryPolicy = new ResiliencePipelineBuilder<HttpResponseMessage>()
         .AddRetry(new()
         {
             ShouldHandle = e => ValueTask.FromResult(e.Outcome switch
@@ -58,13 +56,17 @@ internal sealed class CouchbaseClusterInitializer(
         })
         .Build();
 
+    private AuthenticationHeaderValue? _authenticationHeader;
+
+    private CouchbaseClusterResource Cluster => initializer.Parent;
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         var exitCode = 0;
 
         try
         {
-            var initialNode = cluster.Servers.FirstOrDefault(CouchbaseResourceExtensions.IsInitialNode);
+            var initialNode = Cluster.Servers.FirstOrDefault(CouchbaseResourceExtensions.IsInitialNode);
             if (initialNode is null)
             {
                 throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");
@@ -81,7 +83,7 @@ internal sealed class CouchbaseClusterInitializer(
             });
 
             // Mark the cluster as starting
-            await resourceNotificationService.PublishUpdateAsync(cluster, s => s with
+            await resourceNotificationService.PublishUpdateAsync(Cluster, s => s with
             {
                 StartTimeStamp = DateTime.UtcNow,
                 State = KnownResourceStates.Starting,
@@ -94,16 +96,15 @@ internal sealed class CouchbaseClusterInitializer(
             await InitializeClusterAsync(initialNode, cancellationToken).ConfigureAwait(false);
 
             // Set primary node alternate addresses
-            var authenticationHeader = await BuildAuthenticationHeaderAsync(cluster, cancellationToken).ConfigureAwait(false);
-            await SetNodeAlternateAddresses(initialNode, authenticationHeader, cancellationToken).ConfigureAwait(false);
+            await SetNodeAlternateAddresses(initialNode, cancellationToken).ConfigureAwait(false);
 
             // Initialize additional nodes in parallel
             List<Task> additionalNodeTasks = [];
-            foreach (var node in cluster.Servers)
+            foreach (var node in Cluster.Servers)
             {
                 if (node != initialNode)
                 {
-                    additionalNodeTasks.Add(AddNodeAsync(initialNode, node, authenticationHeader, cancellationToken));
+                    additionalNodeTasks.Add(AddNodeAsync(initialNode, node, cancellationToken));
                 }
             }
 
@@ -112,25 +113,25 @@ internal sealed class CouchbaseClusterInitializer(
             {
                 await Task.WhenAll(additionalNodeTasks);
 
-                await RebalanceAsync(initialNode, authenticationHeader, cancellationToken).ConfigureAwait(false);
+                await RebalanceAsync(initialNode, cancellationToken).ConfigureAwait(false);
             }
 
             // Mark the cluster as running
-            await resourceNotificationService.PublishUpdateAsync(cluster, s => s with
+            await resourceNotificationService.PublishUpdateAsync(Cluster, s => s with
             {
                 State = KnownResourceStates.Running,
             });
 
-            logger.LogInformation("Initialized cluster '{ClusterName}'.", cluster.Name);
+            logger.LogInformation("Initialized cluster '{ClusterName}'.", Cluster.Name);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Failed to initialize Couchbase cluster '{ClusterName}'.", cluster.Name);
+            logger.LogError(ex, "Failed to initialize Couchbase cluster '{ClusterName}'.", Cluster.Name);
 
             exitCode = 1;
 
             // Indicate the cluster failed to start
-            await resourceNotificationService.PublishUpdateAsync(cluster, s => s with
+            await resourceNotificationService.PublishUpdateAsync(Cluster, s => s with
             {
                 State = KnownResourceStates.FailedToStart,
             });
@@ -149,129 +150,94 @@ internal sealed class CouchbaseClusterInitializer(
 
     public async Task InitializeClusterAsync(CouchbaseServerResource initialNode, CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("Initializing cluster '{ClusterName}' on node '{NodeName}'...", cluster.Name, initialNode.Name);
+        logger.LogInformation("Initializing cluster '{ClusterName}' on node '{NodeName}'...", Cluster.Name, initialNode.Name);
 
-        var endpoint = initialNode.GetManagementEndpoint();
+        var settings = await Cluster.GetClusterSettingsAsync(executionContext, cancellationToken).ConfigureAwait(false);
 
-        var response = await RetryPolicy.ExecuteAsync(async ct =>
-        {
-            var settings = await cluster.GetClusterSettingsAsync(executionContext, ct).ConfigureAwait(false);
+        var quotas = settings.MemoryQuotas ?? new();
 
-            var quotas = settings.MemoryQuotas ?? new();
+        var response = await SendRequestAsync(initialNode.GetManagementEndpoint(),
+            HttpMethod.Post,
+            "/clusterInit",
+            new FormUrlEncodedContent(
+            [
+                new("username", await Cluster.UserNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false)),
+                new("password", await Cluster.PasswordParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)),
+                new("clusterName", await Cluster.ClusterNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false)),
+                new("hostname", initialNode.NodeName),
+                new("memoryQuota", quotas.DataServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
+                new("queryMemoryQuota", quotas.QueryServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
+                new("indexMemoryQuota", quotas.IndexServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
+                new("ftsMemoryQuota", quotas.FtsServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
+                new("eventingMemoryQuota", quotas.EventingServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
+                new("cbasMemoryQuota", quotas.AnalyticsServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
+                new("services", BuildServicesString(initialNode.Services)),
+                new("nodeEncryption", "on"),
+                new("port", "SAME"),
+            ]),
+            authenticated: false,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            var uri = await CreateUriAsync(endpoint, "/clusterInit", ct).ConfigureAwait(false);
-            var request = new HttpRequestMessage(HttpMethod.Post, uri)
-            {
-                Content = new FormUrlEncodedContent(
-                [
-                    new("username", await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false)),
-                    new("password", await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false)),
-                    new("clusterName", await cluster.ClusterNameReference.GetValueAsync(ct).ConfigureAwait(false)),
-                    new("hostname", initialNode.NodeName),
-                    new("memoryQuota", quotas.DataServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                    new("queryMemoryQuota", quotas.QueryServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                    new("indexMemoryQuota", quotas.IndexServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                    new("ftsMemoryQuota", quotas.FtsServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                    new("eventingMemoryQuota", quotas.EventingServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                    new("cbasMemoryQuota", quotas.AnalyticsServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                    new("services", BuildServicesString(initialNode.Services)),
-                    new("nodeEncryption", "on"),
-                    new("port", "SAME"),
-                ])
-            };
-
-            return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        }, cancellationToken).ConfigureAwait(false);
-
-        response.EnsureSuccessStatusCode();
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task AddNodeAsync(CouchbaseServerResource initialNode, CouchbaseServerResource addNode, AuthenticationHeaderValue authenticationHeader,
-        CancellationToken cancellationToken = default)
+    public async Task AddNodeAsync(CouchbaseServerResource initialNode, CouchbaseServerResource addNode, CancellationToken cancellationToken = default)
     {
         await resourceNotificationService.WaitForResourceAsync(addNode.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
-
-        logger.LogInformation("Adding node {NodeName} to cluster '{ClusterName}'...", addNode.Name, cluster.Name);
 
         // Load certificates on the node first
         await LoadNodeCertificatesAsync(addNode, cancellationToken).ConfigureAwait(false);
 
-        var endpoint = initialNode.GetManagementEndpoint();
+        logger.LogInformation("Adding node {NodeName} to cluster '{ClusterName}'...", addNode.Name, Cluster.Name);
 
-        var response = await RetryPolicy.ExecuteAsync(async ct =>
-        {
-            var uri = await CreateUriAsync(endpoint, "/controller/addNode", ct).ConfigureAwait(false);
-            var request = new HttpRequestMessage(HttpMethod.Post, uri)
-            {
-                Headers =
-            {
-                Authorization = authenticationHeader
-            },
-                Content = new FormUrlEncodedContent(
-                [
-                    new("user", await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false)),
-                new("password", await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false)),
+        var response = await SendRequestAsync(initialNode.GetManagementEndpoint(),
+            HttpMethod.Post,
+            "/controller/addNode",
+            new FormUrlEncodedContent(
+            [
+                new("user", await Cluster.UserNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false)),
+                new("password", await Cluster.PasswordParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)),
                 new("hostname", addNode.NodeName),
                 new("services", BuildServicesString(addNode.Services)),
-            ])
-            };
+            ]),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        }, cancellationToken).ConfigureAwait(false);
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
-        }
-
-        await SetNodeAlternateAddresses(addNode, authenticationHeader, cancellationToken).ConfigureAwait(false);
+        await SetNodeAlternateAddresses(addNode, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task SetNodeAlternateAddresses(CouchbaseServerResource node, AuthenticationHeaderValue? authenticationHeader, CancellationToken cancellationToken)
+    public async Task SetNodeAlternateAddresses(CouchbaseServerResource node, CancellationToken cancellationToken)
     {
         logger.LogInformation("Setting node {NodeName} alternate addresses...", node.Name);
 
-        var endpoint = node.GetManagementEndpoint();
-
-        var response = await RetryPolicy.ExecuteAsync(async ct =>
+        var dictionary = new Dictionary<string, string?>()
         {
-            var dictionary = new Dictionary<string, string?>()
-            {
-                { "hostname", await node.Host.GetValueAsync(cancellationToken).ConfigureAwait(false) },
-            };
+            { "hostname", await node.Host.GetValueAsync(cancellationToken).ConfigureAwait(false) },
+        };
 
-            if (!node.TryGetEndpoints(out var endpoints))
-            {
-                throw new InvalidOperationException("Failed to get node endpoints.");
-            }
-
-            foreach (var endpoint in endpoints)
-            {
-                if (EndpointNameServiceMappings.TryGetValue(endpoint.Name, out var serviceName))
-                {
-                    var port = await new EndpointReference(node, endpoint).Property(EndpointProperty.Port)
-                        .GetValueAsync(cancellationToken).ConfigureAwait(false);
-                    dictionary.Add(serviceName, port);
-                }
-            }
-
-            var uri = await CreateUriAsync(endpoint, "/node/controller/setupAlternateAddresses/external", ct).ConfigureAwait(false);
-            var request = new HttpRequestMessage(HttpMethod.Put, uri)
-            {
-                Headers =
-                {
-                    Authorization = authenticationHeader
-                },
-                Content = new FormUrlEncodedContent(dictionary)
-            };
-
-            return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        }, cancellationToken).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
+        if (!node.TryGetEndpoints(out var endpoints))
         {
-            throw new InvalidOperationException(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+            throw new InvalidOperationException("Failed to get node endpoints.");
         }
+
+        foreach (var endpoint in endpoints)
+        {
+            if (EndpointNameServiceMappings.TryGetValue(endpoint.Name, out var serviceName))
+            {
+                var port = await new EndpointReference(node, endpoint).Property(EndpointProperty.Port)
+                    .GetValueAsync(cancellationToken).ConfigureAwait(false);
+                dictionary.Add(serviceName, port);
+            }
+        }
+
+        var response = await SendRequestAsync(node.GetManagementEndpoint(),
+            HttpMethod.Put,
+            "/node/controller/setupAlternateAddresses/external",
+            new FormUrlEncodedContent(dictionary),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task LoadNodeCertificatesAsync(CouchbaseServerResource node, CancellationToken cancellationToken)
@@ -287,74 +253,54 @@ internal sealed class CouchbaseClusterInitializer(
         // Don't use the secure endpoint until we load certificates we trust
         var endpoint = node.GetManagementEndpoint(preferInsecure: true);
 
-        var response = await RetryPolicy.ExecuteAsync(async ct =>
-        {
-            var uri = await CreateUriAsync(endpoint, "/node/controller/loadTrustedCAs", ct).ConfigureAwait(false);
-
-            return await httpClient.PostAsync(uri, content: null, ct).ConfigureAwait(false);
-        }, cancellationToken).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
-        }
-
-        response = await RetryPolicy.ExecuteAsync(async ct =>
-        {
-            var uri = await CreateUriAsync(endpoint, "/node/controller/reloadCertificate", ct).ConfigureAwait(false);
-
-            return await httpClient.PostAsync(uri, content: null, ct).ConfigureAwait(false);
-        }, cancellationToken).ConfigureAwait(false);
+        var response = await SendRequestAsync(endpoint,
+            HttpMethod.Post,
+            "/node/controller/loadTrustedCAs",
+            authenticated: false,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
         }
+
+        response = await SendRequestAsync(endpoint,
+            HttpMethod.Post,
+            "/node/controller/reloadCertificate",
+            authenticated: false,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task RebalanceAsync(CouchbaseServerResource initialNode, AuthenticationHeaderValue authenticationHeader,
-        CancellationToken cancellationToken = default)
+    public async Task RebalanceAsync(CouchbaseServerResource initialNode, CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("Rebalancing cluster '{ClusterName}'...", cluster.Name);
+        logger.LogInformation("Rebalancing cluster '{ClusterName}'...", Cluster.Name);
 
         var endpoint = initialNode.GetManagementEndpoint();
 
-        var response = await RetryPolicy.ExecuteAsync(async ct =>
-        {
-            var uri = await CreateUriAsync(endpoint, "/controller/rebalance", ct).ConfigureAwait(false);
-            var request = new HttpRequestMessage(HttpMethod.Post, uri)
-            {
-                Headers =
-                {
-                    Authorization = authenticationHeader
-                },
-                Content = new FormUrlEncodedContent(
-                [
-                    new("knownNodes", string.Join(',', cluster.Servers.Select(p => $"ns_1@{p.NodeName}"))),
-                ])
-            };
+        var response = await SendRequestAsync(endpoint,
+            HttpMethod.Post,
+            "/controller/rebalance",
+            new FormUrlEncodedContent(
+            [
+                new("knownNodes", string.Join(',', Cluster.Servers.Select(p => $"ns_1@{p.NodeName}"))),
+            ]),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        }, cancellationToken).ConfigureAwait(false);
-
-        response.EnsureSuccessStatusCode();
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
 
         // Wait for the rebalance to complete
         RebalanceStatus? status;
         var uri = await CreateUriAsync(endpoint, "/pools/default/rebalanceProgress", cancellationToken).ConfigureAwait(false);
         do
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, uri)
-            {
-                Headers =
-                {
-                    Authorization = authenticationHeader
-                }
-            };
+            response = await SendRequestAsync(endpoint,
+                HttpMethod.Get,
+                "/pools/default/rebalanceProgress",
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-
-            response.EnsureSuccessStatusCode();
+            await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
 
             status = await response.Content.ReadFromJsonAsync<RebalanceStatus>(cancellationToken).ConfigureAwait(false);
             if (status?.Status == "none")
@@ -365,10 +311,68 @@ internal sealed class CouchbaseClusterInitializer(
             await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
         } while (true);
 
-        logger.LogInformation("Rebalance complete for cluster '{ClusterName}'.", cluster.Name);
+        logger.LogInformation("Rebalance complete for cluster '{ClusterName}'.", Cluster.Name);
     }
 
-    public static async Task<Uri> CreateUriAsync(EndpointReference endpoint, string path, CancellationToken cancellationToken = default)
+    internal async Task<HttpResponseMessage> SendRequestAsync(
+        EndpointReference endpoint,
+        HttpMethod method,
+        string path,
+        HttpContent? content = null,
+        bool authenticated = true,
+        bool autoRetry = true,
+        CancellationToken cancellationToken = default)
+    {
+        var uri = await CreateUriAsync(endpoint, path, cancellationToken).ConfigureAwait(false);
+
+        AuthenticationHeaderValue? authenticationHeader = null;
+        if (authenticated)
+        {
+            authenticationHeader = await GetAuthenticationHeaderAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        ValueTask<HttpResponseMessage> SendAsync(CancellationToken ct)
+        {
+            var request = new HttpRequestMessage(method, uri)
+            {
+                Headers =
+                {
+                    Authorization = authenticationHeader
+                },
+                Content = content
+            };
+
+            return new ValueTask<HttpResponseMessage>(httpClient.SendAsync(request, ct));
+        }
+
+        if (autoRetry)
+        {
+            return await RetryPolicy.ExecuteAsync(SendAsync, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            return await SendAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    internal static async ValueTask ThrowOnFailureAsync(HttpResponseMessage message, CancellationToken cancellationToken = default)
+    {
+        if (!message.IsSuccessStatusCode)
+        {
+            // Try to read an error message from the response
+            var errorMessage = await message.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(errorMessage))
+            {
+                throw new InvalidOperationException($"{message.StatusCode}: {errorMessage}");
+            }
+            else
+            {
+                throw new InvalidOperationException($"Request failed with status code {message.StatusCode}.");
+            }
+        }
+    }
+
+    private static async Task<Uri> CreateUriAsync(EndpointReference endpoint, string path, CancellationToken cancellationToken = default)
     {
         var baseUri = await endpoint.GetValueAsync(cancellationToken).ConfigureAwait(false);
         if (baseUri is null)
@@ -382,13 +386,20 @@ internal sealed class CouchbaseClusterInitializer(
         }.Uri;
     }
 
-    public static async ValueTask<AuthenticationHeaderValue> BuildAuthenticationHeaderAsync(CouchbaseClusterResource cluster, CancellationToken cancellationToken = default)
+    private async ValueTask<AuthenticationHeaderValue> GetAuthenticationHeaderAsync(CancellationToken cancellationToken = default)
     {
-        var username = await cluster.UserNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false);
-        var password = await cluster.PasswordParameter.GetValueAsync(cancellationToken).ConfigureAwait(false);
+        if (_authenticationHeader is not AuthenticationHeaderValue header)
+        {
+            var username = await Cluster.UserNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false);
+            var password = await Cluster.PasswordParameter.GetValueAsync(cancellationToken).ConfigureAwait(false);
 
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
-        return new AuthenticationHeaderValue("Basic", credentials);
+            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+            header = new AuthenticationHeaderValue("Basic", credentials);
+
+            _authenticationHeader = header;
+        }
+
+        return header;
     }
 
     private static string BuildServicesString(CouchbaseServices services)

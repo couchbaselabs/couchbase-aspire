@@ -68,20 +68,6 @@ public static class CouchbaseBucketBuilderExtensions
                 bucketNameFactory: _ => bucket.BucketName,
                 name: healthCheckKey);
 
-        var httpClientName = $"{name}-initializer-client";
-        builder.ApplicationBuilder.Services.AddHttpClient(httpClientName)
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                SslOptions =
-                {
-                    RemoteCertificateValidationCallback =
-                        // Trust the CA certificate, applicable
-                        builder.Resource.GetClusterCertificationAuthority() is { TrustCertificate: true } annotation
-                            ? annotation.CreateValidationCallback()
-                            : null
-                }
-            });
-
         return builder.ApplicationBuilder
             .AddResource(bucket)
             .WithParentRelationship(builder)
@@ -109,7 +95,6 @@ public static class CouchbaseBucketBuilderExtensions
                         var initializer = new CouchbaseBucketInitializer(
                             resource,
                             builder.ApplicationBuilder.ExecutionContext,
-                            @event.Services.GetRequiredService<IHttpClientFactory>().CreateClient(httpClientName),
                             logger,
                             @event.Services.GetRequiredService<ResourceNotificationService>(),
                             @event.Eventing);

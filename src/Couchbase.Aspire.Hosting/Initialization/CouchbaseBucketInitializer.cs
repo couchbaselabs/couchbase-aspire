@@ -6,6 +6,7 @@ using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Eventing;
 using Couchbase.Aspire.Hosting;
 using Couchbase.KeyValue;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Couchbase.Aspire.Hosting.Initialization;
@@ -13,7 +14,6 @@ namespace Couchbase.Aspire.Hosting.Initialization;
 internal class CouchbaseBucketInitializer(
     CouchbaseBucketResource bucket,
     DistributedApplicationExecutionContext executionContext,
-    HttpClient httpClient,
     ILogger logger,
     ResourceNotificationService resourceNotificationService,
     IDistributedApplicationEventing eventing)
@@ -77,28 +77,23 @@ internal class CouchbaseBucketInitializer(
 
         logger.LogInformation("Creating bucket '{BucketName}'...", bucket.BucketName);
 
-        var endpoint = node.GetManagementEndpoint();
-        var authenticationHeader = await CouchbaseClusterInitializer.BuildAuthenticationHeaderAsync(bucket.Parent, cancellationToken)
-            .ConfigureAwait(false);
-
-        var response = await CouchbaseClusterInitializer.RetryPolicy.ExecuteAsync(async ct =>
+        var initializer = bucket.Parent.GetClusterInitializerResource()?.GetClusterInitializer(executionContext.ServiceProvider);
+        if (initializer is null)
         {
-            var uri = await CouchbaseClusterInitializer.CreateUriAsync(endpoint, $"/pools/default/buckets/{bucket.BucketName}", ct).ConfigureAwait(false);
+            throw new InvalidOperationException("Couchbase cluster initializer annotation not found.");
+        }
 
-            var request = new HttpRequestMessage(HttpMethod.Get, uri)
-            {
-                Headers = {
-                    Authorization = authenticationHeader
-                }
-            };
+        var endpoint = node.GetManagementEndpoint();
 
-            return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        }, cancellationToken);
+        var response = await initializer.SendRequestAsync(endpoint,
+            HttpMethod.Get,
+            $"/pools/default/buckets/{bucket.BucketName}",
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
         {
             // We're expecting 404 not found. If 200 OK the bucket already exists and we can exit.
-            response.EnsureSuccessStatusCode();
+            await CouchbaseClusterInitializer.ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
 
             logger.LogInformation("Bucket '{BucketName}' already exists.", bucket.BucketName);
             return;
@@ -108,62 +103,53 @@ internal class CouchbaseBucketInitializer(
 
         var settings = await bucket.GetBucketSettingsAsync(executionContext, cancellationToken).ConfigureAwait(false);
 
-        response = await CouchbaseClusterInitializer.RetryPolicy.ExecuteAsync(async ct =>
+        var dictionary = new Dictionary<string, string?>
         {
-            var uri = await CouchbaseClusterInitializer.CreateUriAsync(endpoint, "/pools/default/buckets", ct).ConfigureAwait(false);
+            { "name", bucket.BucketName },
+            { "bucketType", GetEnumValueString(settings.BucketType) },
+            { "ramQuota", (settings.MemoryQuotaMegabytes ?? DefaultMemoryQuotaMegabytes).ToString(CultureInfo.InvariantCulture) }
+        };
 
-            var dictionary = new Dictionary<string, string?>
-            {
-                { "name", bucket.BucketName },
-                { "bucketType", GetEnumValueString(settings.BucketType) },
-                { "ramQuota", (settings.MemoryQuotaMegabytes ?? DefaultMemoryQuotaMegabytes).ToString(CultureInfo.InvariantCulture) }
-            };
+        if (settings.Replicas is int replicas)
+        {
+            dictionary.Add("replicaNumber", replicas.ToString(CultureInfo.InvariantCulture));
+        }
+        if (settings.FlushEnabled is bool flushEnabled)
+        {
+            dictionary.Add("flushEnabled", flushEnabled ? "1" : "0");
+        }
+        if (settings.StorageBackend is Management.Buckets.StorageBackend storageBackend)
+        {
+            dictionary.Add("storageBackend", GetEnumValueString(storageBackend));
+        }
+        if (settings.CompressionMode is Management.Buckets.CompressionMode compressionMode)
+        {
+            dictionary.Add("compressionMode", GetEnumValueString(compressionMode));
+        }
+        if (settings.ConflictResolutionType is Management.Buckets.ConflictResolutionType conflictResolutionType)
+        {
+            dictionary.Add("conflictResolutionType", GetEnumValueString(conflictResolutionType));
+        }
+        if (settings.MinimumDurabilityLevel is DurabilityLevel durabilityLevel)
+        {
+            dictionary.Add("durabilityMinLevel", GetEnumValueString(durabilityLevel));
+        }
+        if (settings.EvictionPolicy is Management.Buckets.EvictionPolicyType evictionPolicy)
+        {
+            dictionary.Add("evictionPolicy", GetEnumValueString(evictionPolicy));
+        }
+        if (settings.MaximumTimeToLiveSeconds is int maxTtl)
+        {
+            dictionary.Add("maxTTL", maxTtl.ToString(CultureInfo.InvariantCulture));
+        }
 
-            if (settings.Replicas is int replicas)
-            {
-                dictionary.Add("replicaNumber", replicas.ToString(CultureInfo.InvariantCulture));
-            }
-            if (settings.FlushEnabled is bool flushEnabled)
-            {
-                dictionary.Add("flushEnabled", flushEnabled ? "1" : "0");
-            }
-            if (settings.StorageBackend is Management.Buckets.StorageBackend storageBackend)
-            {
-                dictionary.Add("storageBackend", GetEnumValueString(storageBackend));
-            }
-            if (settings.CompressionMode is Management.Buckets.CompressionMode compressionMode)
-            {
-                dictionary.Add("compressionMode", GetEnumValueString(compressionMode));
-            }
-            if (settings.ConflictResolutionType is Management.Buckets.ConflictResolutionType conflictResolutionType)
-            {
-                dictionary.Add("conflictResolutionType", GetEnumValueString(conflictResolutionType));
-            }
-            if (settings.MinimumDurabilityLevel is DurabilityLevel durabilityLevel)
-            {
-                dictionary.Add("durabilityMinLevel", GetEnumValueString(durabilityLevel));
-            }
-            if (settings.EvictionPolicy is Management.Buckets.EvictionPolicyType evictionPolicy)
-            {
-                dictionary.Add("evictionPolicy", GetEnumValueString(evictionPolicy));
-            }
-            if (settings.MaximumTimeToLiveSeconds is int maxTtl)
-            {
-                dictionary.Add("maxTTL", maxTtl.ToString(CultureInfo.InvariantCulture));
-            }
+        response = await initializer.SendRequestAsync(endpoint,
+            HttpMethod.Post,
+            "/pools/default/buckets",
+            new FormUrlEncodedContent(dictionary),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            var request = new HttpRequestMessage(HttpMethod.Post, uri)
-            {
-                Headers = {
-                    Authorization = authenticationHeader
-                },
-                Content = new FormUrlEncodedContent(dictionary),
-            };
-
-            return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        }, cancellationToken);
-
-        response.EnsureSuccessStatusCode();
+        await CouchbaseClusterInitializer.ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
 
         logger.LogInformation("Created bucket '{BucketName}'.", bucket.BucketName);
     }
