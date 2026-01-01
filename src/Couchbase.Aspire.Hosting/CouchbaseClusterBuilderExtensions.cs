@@ -88,6 +88,15 @@ public static class CouchbaseClusterBuilderExtensions
             {
                 var settings = await cluster.GetClusterSettingsAsync(builder.ExecutionContext, ct).ConfigureAwait(false);
 
+                ContainerLifetimeAnnotation? containerLifetime = null;
+                if (!cluster.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>())
+                {
+                    // Only apply container lifetimes if no custom CA is specified. If a custom CA is used the containers
+                    // are recreated on every start, regardless of this setting, because the node certificates are not
+                    // regenerated.
+                    cluster.TryGetLastAnnotation(out containerLifetime);
+                }
+
                 var initialNodeFound = false;
                 foreach (var serverGroup in cluster.ServerGroups.Values)
                 {
@@ -97,6 +106,11 @@ public static class CouchbaseClusterBuilderExtensions
                     for (var i = 0; i < replicaCount; i++)
                     {
                         var server = serverGroupBuilder.AddServer($"{serverGroup.Name}-{i}");
+
+                        if (containerLifetime is not null)
+                        {
+                            server.WithLifetime(containerLifetime.Lifetime);
+                        }
 
                         if (!initialNodeFound && serverGroup.Services.HasFlag(CouchbaseServices.Data))
                         {
@@ -340,6 +354,24 @@ public static class CouchbaseClusterBuilderExtensions
         }
 
         return builder.WithAnnotation(annotation, ResourceAnnotationMutationBehavior.Replace);
+    }
+
+    /// <summary>
+    /// Sets the lifetime behavior of the Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="lifetime">The lifetime behavior of the Couchbase cluster. The defaults behavior is <see cref="ContainerLifetime.Session"/>.</param>
+    /// <returns>The <see cref="IResourceBuilder{T}"/>.</returns>
+    /// <remarks>
+    /// <see cref="ContainerLifetime.Persistent"/> is not currently supported when supplying a custom CA certificate
+    /// via <see cref="WithRootCertificationAuthority(IResourceBuilder{CouchbaseClusterResource}, X509Certificate2, X509Certificate2Collection?, bool)"/>.
+    /// </remarks>
+    public static IResourceBuilder<CouchbaseClusterResource> WithLifetime(this IResourceBuilder<CouchbaseClusterResource> builder,
+        ContainerLifetime lifetime)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.WithAnnotation(new ContainerLifetimeAnnotation { Lifetime = lifetime }, ResourceAnnotationMutationBehavior.Replace);
     }
 
     private static void AddClusterInitializer(IResourceBuilder<CouchbaseClusterResource> cluster)

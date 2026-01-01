@@ -2,7 +2,7 @@ using Aspire.Hosting.ApplicationModel;
 
 namespace Couchbase.Aspire.Hosting;
 
-public class CouchbaseServerGroupResource : Resource
+public class CouchbaseServerGroupResource : Resource, IResourceWithoutLifetime
 {
     public CouchbaseServerGroupResource(string name, CouchbaseClusterResource parent, CouchbaseServices services) : base(name)
     {

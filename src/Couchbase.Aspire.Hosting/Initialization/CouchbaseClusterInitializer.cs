@@ -89,22 +89,22 @@ internal sealed class CouchbaseClusterInitializer(
                 State = KnownResourceStates.Starting,
             });
 
-            // Load certificates before any other operations
-            await LoadNodeCertificatesAsync(initialNode, cancellationToken).ConfigureAwait(false);
-
             // Initialize the cluster on the primary node
             await InitializeClusterAsync(initialNode, cancellationToken).ConfigureAwait(false);
 
             // Set primary node alternate addresses
             await SetNodeAlternateAddresses(initialNode, cancellationToken).ConfigureAwait(false);
 
+            // Get existing cluster nodes
+            var existingNodes = await GetClusterNodesAsync(initialNode, cancellationToken).ConfigureAwait(false);
+
             // Initialize additional nodes in parallel
-            List<Task> additionalNodeTasks = [];
+            List<Task<bool>> additionalNodeTasks = [];
             foreach (var node in Cluster.Servers)
             {
                 if (node != initialNode)
                 {
-                    additionalNodeTasks.Add(AddNodeAsync(initialNode, node, cancellationToken));
+                    additionalNodeTasks.Add(AddNodeAsync(initialNode, node, existingNodes, cancellationToken));
                 }
             }
 
@@ -113,7 +113,11 @@ internal sealed class CouchbaseClusterInitializer(
             {
                 await Task.WhenAll(additionalNodeTasks);
 
-                await RebalanceAsync(initialNode, cancellationToken).ConfigureAwait(false);
+                if (additionalNodeTasks.Any(p => p.Result == true))
+                {
+                    // Nodes were added
+                    await RebalanceAsync(initialNode, cancellationToken).ConfigureAwait(false);
+                }
             }
 
             // Mark the cluster as running
@@ -150,13 +154,32 @@ internal sealed class CouchbaseClusterInitializer(
 
     public async Task InitializeClusterAsync(CouchbaseServerResource initialNode, CancellationToken cancellationToken = default)
     {
+        var response = await SendRequestAsync(initialNode.GetManagementEndpoint(preferInsecure: true),
+            HttpMethod.Get,
+            "/pools/default",
+            cancellationToken: cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            // Cluster is already initialized
+            return;
+        }
+        else if (response.StatusCode != HttpStatusCode.NotFound)
+        {
+            // Not found indicates the cluster requires initialization, anything else is a true error
+            await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Load certificates before any other operations
+        await LoadNodeCertificatesAsync(initialNode, cancellationToken).ConfigureAwait(false);
+
         logger.LogInformation("Initializing cluster '{ClusterName}' on node '{NodeName}'...", Cluster.Name, initialNode.Name);
 
         var settings = await Cluster.GetClusterSettingsAsync(executionContext, cancellationToken).ConfigureAwait(false);
 
         var quotas = settings.MemoryQuotas ?? new();
 
-        var response = await SendRequestAsync(initialNode.GetManagementEndpoint(),
+        response = await SendRequestAsync(initialNode.GetManagementEndpoint(),
             HttpMethod.Post,
             "/clusterInit",
             new FormUrlEncodedContent(
@@ -181,30 +204,68 @@ internal sealed class CouchbaseClusterInitializer(
         await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task AddNodeAsync(CouchbaseServerResource initialNode, CouchbaseServerResource addNode, CancellationToken cancellationToken = default)
+    private async Task<List<string>> GetClusterNodesAsync(CouchbaseServerResource initialNode, CancellationToken cancellationToken = default)
     {
-        await resourceNotificationService.WaitForResourceAsync(addNode.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
+        var endpoint = initialNode.GetManagementEndpoint();
 
-        // Load certificates on the node first
-        await LoadNodeCertificatesAsync(addNode, cancellationToken).ConfigureAwait(false);
-
-        logger.LogInformation("Adding node {NodeName} to cluster '{ClusterName}'...", addNode.Name, Cluster.Name);
-
-        var response = await SendRequestAsync(initialNode.GetManagementEndpoint(),
-            HttpMethod.Post,
-            "/controller/addNode",
-            new FormUrlEncodedContent(
-            [
-                new("user", await Cluster.UserNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false)),
-                new("password", await Cluster.PasswordParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)),
-                new("hostname", addNode.NodeName),
-                new("services", BuildServicesString(addNode.Services)),
-            ]),
+        var response = await SendRequestAsync(endpoint,
+            HttpMethod.Get,
+            "/pools/nodes",
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
 
+        var pool = await response.Content.ReadFromJsonAsync<Pool>(cancellationToken).ConfigureAwait(false);
+
+        return pool!.Nodes.Select(p => p.Hostname).ToList() ?? [];
+    }
+
+    /// <returns><c>true</c> if the node was added, <c>false</c> if it is already part of the cluster.</returns>
+    private async Task<bool> AddNodeAsync(CouchbaseServerResource initialNode, CouchbaseServerResource addNode, List<string> existingNodes,
+        CancellationToken cancellationToken = default)
+    {
+        await resourceNotificationService.WaitForResourceAsync(addNode.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
+
+        var added = false;
+        if (!existingNodes.Contains($"{addNode.NodeName}:8091"))
+        {
+            // If the node isn't fully started, the request to add the node may fail, so wait for a 404 from /pools/default
+            var response = await SendRequestAsync(addNode.GetManagementEndpoint(preferInsecure: true),
+                HttpMethod.Get,
+                "/pools/default",
+                authenticated: false,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
+            {
+                await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Load certificates on the node first
+            await LoadNodeCertificatesAsync(addNode, cancellationToken).ConfigureAwait(false);
+
+            logger.LogInformation("Adding node {NodeName} to cluster '{ClusterName}'...", addNode.Name, Cluster.Name);
+
+            response = await SendRequestAsync(initialNode.GetManagementEndpoint(),
+                HttpMethod.Post,
+                "/controller/addNode",
+                new FormUrlEncodedContent(
+                [
+                    new("user", await Cluster.UserNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false)),
+                    new("password", await Cluster.PasswordParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)),
+                    new("hostname", addNode.NodeName),
+                    new("services", BuildServicesString(addNode.Services)),
+                ]),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+
+            added = true;
+        }
+
         await SetNodeAlternateAddresses(addNode, cancellationToken).ConfigureAwait(false);
+
+        return added;
     }
 
     public async Task SetNodeAlternateAddresses(CouchbaseServerResource node, CancellationToken cancellationToken)
@@ -434,5 +495,17 @@ internal sealed class CouchbaseClusterInitializer(
     {
         [JsonPropertyName("status")]
         public string? Status { get; set; }
+    }
+
+    private sealed class Pool
+    {
+        [JsonPropertyName("nodes")]
+        public List<Node> Nodes { get; set; } = null!;
+    }
+
+    private sealed class Node
+    {
+        [JsonPropertyName("hostname")]
+        public string Hostname { get; set; } = null!;
     }
 }
