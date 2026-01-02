@@ -5,6 +5,25 @@ namespace Aspire.Test.AppHost;
 
 internal static class Helpers
 {
+    public static X509Certificate2 LoadCACertificate(string pfxFile, string? password = null)
+    {
+        if (File.Exists(pfxFile))
+        {
+            return new X509Certificate2(pfxFile, password, X509KeyStorageFlags.Exportable);
+        }
+        else
+        {
+            // Generate the certificate and save for subsequent runs
+            var certificate = CreateCACertificate("Couchbase CA");
+
+            var exportBytes = certificate.Export(X509ContentType.Pfx);
+            using var file = File.Create(pfxFile);
+            file.Write(exportBytes);
+
+            return certificate;
+        }
+    }
+
     public static X509Certificate2 CreateCACertificate(string name, X509Certificate2? issuer = null)
     {
         // This wouldn't typically be done by a real Aspire use case because trusting the certificate

@@ -408,6 +408,23 @@ public static partial class CouchbaseClusterBuilderExtensions
             .UpdateExistingServers();
     }
 
+    /// <summary>
+    /// Adds a named volume for each Couchbase server container resource.
+    /// </summary>
+    /// <param name="builder">The resource builder.</param>
+    /// <param name="nameFactory">Factory which defines the name of the volume for each server. Defaults to an auto-generated name based on the application and resource names.</param>
+    /// <returns>The <see cref="IResourceBuilder{T}"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithDataVolumes(this IResourceBuilder<CouchbaseClusterResource> builder,
+        Func<IResourceBuilder<CouchbaseServerResource>, string?>? nameFactory = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder
+            .WithAnnotation(new CouchbaseDataVolumeAnnotation { VolumeNameFactory = nameFactory })
+            .UpdateExistingServers();
+    }
+
+
     private static IResourceBuilder<CouchbaseClusterResource> UpdateExistingServers(this IResourceBuilder<CouchbaseClusterResource> builder)
     {
         ArgumentNullException.ThrowIfNull(builder);

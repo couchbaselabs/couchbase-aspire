@@ -9,12 +9,10 @@ var couchbase = builder.AddCouchbase("couchbase")
     .WithSecureManagementPort(18091) // Optional fixed port number for the primary node
     .WithCouchbaseEdition(CouchbaseEdition.Enterprise); // Optional edition, default is Enterprise
 
-// Uncomment this section to test building a secure cluster. This also tests the advanced case of a
-// certificate chain to the root CA. Note that the test web app will not be able to connect because
-// it doesn't trust the self-signed certificate.
-// var rootCertificate = Aspire.Test.AppHost.Helpers.CreateCACertificate("Couchbase Root CA");
-// var intermediateCertificate = Aspire.Test.AppHost.Helpers.CreateCACertificate("Couchbase CA", rootCertificate);
-// couchbase.WithRootCertificationAuthority(intermediateCertificate, [rootCertificate], trustCertificate: true);
+// Uncomment this section to test building a secure cluster. Note that the test web app will not be
+// able to connect unless the certificate is trusted on the host machine.
+// var certificate = Aspire.Test.AppHost.Helpers.LoadCACertificate("CouchbaseCA.pfx");
+// couchbase.WithRootCertificationAuthority(certificate, trustCertificate: true);
 
 var couchbaseGroup1 = couchbase.AddServerGroup("couchbase-group1", CouchbaseServices.Data | CouchbaseServices.Query | CouchbaseServices.Index | CouchbaseServices.Fts)
     .WithReplicas(2);

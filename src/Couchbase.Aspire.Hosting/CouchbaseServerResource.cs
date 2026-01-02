@@ -41,20 +41,15 @@ public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironme
     /// </summary>
     public EndpointReference? DataEndpoint { get; }
 
-    // Secure endpoints may or may not exist, and can change after initial resource creation based
-    // on the Couchbase edition, so find them dynamically
-
     /// <summary>
     /// Gets the secure management endpoint for this resource.
     /// </summary>
     public EndpointReference? ManagementSecureEndpoint { get; }
-        //this.GetEndpoints().FirstOrDefault(p => StringComparer.OrdinalIgnoreCase.Equals(p.EndpointName, CouchbaseEndpointNames.ManagementSecure));
 
     /// <summary>
     /// Gets the secure data endpoint for this resource.
     /// </summary>
     public EndpointReference? DataSecureEndpoint { get; }
-        //this.GetEndpoints().FirstOrDefault(p => StringComparer.OrdinalIgnoreCase.Equals(p.EndpointName, CouchbaseEndpointNames.DataSecure));
 
     /// <summary>
     /// Gets the host and port endpoint reference for this resource.

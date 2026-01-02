@@ -138,6 +138,11 @@ internal static class CouchbaseServerBuilderExtensions
             image.ApplyToServer(builder);
         }
 
+        if (cluster.TryGetLastAnnotation<CouchbaseDataVolumeAnnotation>(out var dataVolume))
+        {
+            dataVolume.ApplyToServer(builder);
+        }
+
         if (cluster.TryGetLastAnnotation<CouchbaseEditionAnnotation>(out var edition))
         {
             edition.ApplyToServer(builder);
