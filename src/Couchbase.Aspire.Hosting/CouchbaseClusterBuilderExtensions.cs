@@ -1,4 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
+using System.Text.RegularExpressions;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Couchbase.Aspire.Hosting;
@@ -9,8 +10,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Couchbase.Aspire.Hosting;
 
-public static class CouchbaseClusterBuilderExtensions
+public static partial class CouchbaseClusterBuilderExtensions
 {
+    private const string EnterpriseTagPrefix = "enterprise-";
+    private const string CommunityTagPrefix = "community-";
+
+    [GeneratedRegex(@"^\d+\.\d+\.\d+$")]
+    private static partial Regex VersionTagRegex();
+
     /// <summary>
     /// Adds a Couchbase server container to the application model.
     /// </summary>
@@ -105,7 +112,7 @@ public static class CouchbaseClusterBuilderExtensions
                     var replicaCount = serverGroup.GetReplicaCount();
                     for (var i = 0; i < replicaCount; i++)
                     {
-                        var server = serverGroupBuilder.AddServer($"{serverGroup.Name}-{i}");
+                        var server = serverGroupBuilder.AddServer($"{serverGroup.Name}-{i}", settings);
 
                         if (containerLifetime is not null)
                         {
@@ -122,7 +129,7 @@ public static class CouchbaseClusterBuilderExtensions
                                 // For the first server, set the static management port number, if configured
                                 server.WithEndpoint(CouchbaseEndpointNames.Management, endpoint => endpoint.Port = managementPort);
                             }
-                            if (settings.SecureManagementPort is int secureManagementPort)
+                            if (settings.SecureManagementPort is int secureManagementPort && settings.Edition == CouchbaseEdition.Enterprise)
                             {
                                 // For the first server, set the static management port number, if configured
                                 server.WithEndpoint(CouchbaseEndpointNames.ManagementSecure, endpoint => endpoint.Port = secureManagementPort);
@@ -318,6 +325,56 @@ public static class CouchbaseClusterBuilderExtensions
         {
             serverBuilder.WithImageTag(tag);
         });
+    }
+
+    /// <summary>
+    /// Select the edition of Couchbase Server.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="edition">The edition of Couchbase Serer.</param>
+    /// <returns>The <see cref="IResourceBuilder{CouchbaseClusterResource}"/>.</returns>
+    /// <remarks>
+    /// If using custom image registries or tags, the tag will be prefixed with "enterprise-" or "community-"
+    /// if the tag is a simple version number. To prevent this, set the custom image tag after setting the edition.
+    /// </remarks>
+    public static IResourceBuilder<CouchbaseClusterResource> WithCouchbaseEdition(this IResourceBuilder<CouchbaseClusterResource> builder, CouchbaseEdition edition)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        if (!Enum.IsDefined(edition))
+        {
+            throw new ArgumentException($"{nameof(edition)} is not a valid Couchbase edition.", nameof(edition));
+        }
+
+        return builder
+            .WithSettings(context =>
+            {
+                context.Settings.Edition = edition;
+            })
+            .WithContainerConfiguration(serverBuilder =>
+            {
+                if (serverBuilder.Resource.TryGetLastAnnotation<ContainerImageAnnotation>(out var annotation))
+                {
+                    var tag = annotation.Tag;
+                    if (tag is not null)
+                    {
+                        // Remove the current prefix, if present
+                        if (tag.StartsWith(EnterpriseTagPrefix))
+                        {
+                            tag = tag[EnterpriseTagPrefix.Length..];
+                        }
+                        else if (tag.StartsWith(CommunityTagPrefix))
+                        {
+                            tag = tag[CommunityTagPrefix.Length..];
+                        }
+
+                        // Add the prefix if the current tag is a simple version number
+                        if (VersionTagRegex().IsMatch(tag))
+                        {
+                            annotation.Tag = $"{(edition == CouchbaseEdition.Enterprise ? EnterpriseTagPrefix : CommunityTagPrefix)}{tag}";
+                        }
+                    }
+                }
+            });
     }
 
     /// <summary>

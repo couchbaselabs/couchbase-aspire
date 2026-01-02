@@ -73,6 +73,7 @@ internal sealed class CouchbaseClusterInitializer(
             }
 
             // Wait for the initial node before we consider the init to be running
+            logger.LogInformation("Waiting for resource {ResourceName} to be running...", initialNode.Name);
             await resourceNotificationService.WaitForResourceAsync(initialNode.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
 
             // Mark the init as running
@@ -179,25 +180,32 @@ internal sealed class CouchbaseClusterInitializer(
 
         var quotas = settings.MemoryQuotas ?? new();
 
+        var dictionary = new Dictionary<string, string?>()
+        {
+            { "username", await Cluster.UserNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false) },
+            { "password", await Cluster.PasswordParameter.GetValueAsync(cancellationToken).ConfigureAwait(false) },
+            { "clusterName", await Cluster.ClusterNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false) },
+            { "hostname", initialNode.NodeName },
+            { "memoryQuota", quotas.DataServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
+            { "queryMemoryQuota", quotas.QueryServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
+            { "indexMemoryQuota", quotas.IndexServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
+            { "ftsMemoryQuota", quotas.FtsServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
+            { "services", BuildServicesString(initialNode.Services) },
+            { "port", "SAME" },
+        };
+
+        if (settings.Edition == CouchbaseEdition.Enterprise)
+        {
+            // These parameters are only supported on Enterprise edition
+            dictionary.Add("cbasMemoryQuota", quotas.AnalyticsServiceMegabytes.ToString(CultureInfo.InvariantCulture));
+            dictionary.Add("eventingMemoryQuota", quotas.EventingServiceMegabytes.ToString(CultureInfo.InvariantCulture));
+            dictionary.Add("nodeEncryption", "on");
+        }
+
         response = await SendRequestAsync(initialNode.GetManagementEndpoint(),
             HttpMethod.Post,
             "/clusterInit",
-            new FormUrlEncodedContent(
-            [
-                new("username", await Cluster.UserNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false)),
-                new("password", await Cluster.PasswordParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)),
-                new("clusterName", await Cluster.ClusterNameReference.GetValueAsync(cancellationToken).ConfigureAwait(false)),
-                new("hostname", initialNode.NodeName),
-                new("memoryQuota", quotas.DataServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                new("queryMemoryQuota", quotas.QueryServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                new("indexMemoryQuota", quotas.IndexServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                new("ftsMemoryQuota", quotas.FtsServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                new("eventingMemoryQuota", quotas.EventingServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                new("cbasMemoryQuota", quotas.AnalyticsServiceMegabytes.ToString(CultureInfo.InvariantCulture)),
-                new("services", BuildServicesString(initialNode.Services)),
-                new("nodeEncryption", "on"),
-                new("port", "SAME"),
-            ]),
+            new FormUrlEncodedContent(dictionary),
             authenticated: false,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -224,6 +232,7 @@ internal sealed class CouchbaseClusterInitializer(
     private async Task<bool> AddNodeAsync(CouchbaseServerResource initialNode, CouchbaseServerResource addNode, List<string> existingNodes,
         CancellationToken cancellationToken = default)
     {
+        logger.LogInformation("Waiting for resource {ResourceName} to be running...", addNode.Name);
         await resourceNotificationService.WaitForResourceAsync(addNode.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
 
         var added = false;

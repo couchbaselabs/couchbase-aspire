@@ -4,19 +4,27 @@ namespace Couchbase.Aspire.Hosting;
 
 public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironment, IResource
 {
-    public CouchbaseServerResource(string name, CouchbaseServerGroupResource parent) : base(name)
+    public CouchbaseServerResource(string name, CouchbaseServerGroupResource parent, CouchbaseEdition edition) : base(name)
     {
         ArgumentNullException.ThrowIfNull(parent);
 
         Parent = parent;
 
         ManagementEndpoint = new EndpointReference(this, CouchbaseEndpointNames.Management);
-        ManagementSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.ManagementSecure);
+
+        if (edition == CouchbaseEdition.Enterprise)
+        {
+            ManagementSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.ManagementSecure);
+        }
 
         if (parent.Services.HasFlag(CouchbaseServices.Data))
         {
             DataEndpoint = new EndpointReference(this, CouchbaseEndpointNames.Data);
-            DataSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.DataSecure);
+
+            if (edition == CouchbaseEdition.Enterprise)
+            {
+                DataSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.DataSecure);
+            }
         }
     }
 
@@ -33,7 +41,7 @@ public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironme
 
     public EndpointReference ManagementEndpoint { get; }
 
-    public EndpointReference ManagementSecureEndpoint { get; }
+    public EndpointReference? ManagementSecureEndpoint { get; }
 
     public EndpointReference? DataEndpoint { get; }
 

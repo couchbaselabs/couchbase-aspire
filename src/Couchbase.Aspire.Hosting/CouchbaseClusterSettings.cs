@@ -10,6 +10,11 @@ namespace Couchbase.Aspire.Hosting;
 public class CouchbaseClusterSettings
 {
     /// <summary>
+    /// Edition of Couchbase Server.
+    /// </summary>
+    public CouchbaseEdition Edition { get; set; } = CouchbaseEdition.Enterprise;
+
+    /// <summary>
     /// Static management port for the Couchbase cluster.
     /// </summary>
     public int? ManagementPort { get; set; }
