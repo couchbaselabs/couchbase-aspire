@@ -2,7 +2,7 @@
 @using Couchbase.Core.Exceptions.KeyValue
 @using Couchbase.Extensions.DependencyInjection
 @rendermode InteractiveServer
-@inject IClusterProvider ClusterProvider
+@inject IBucketProvider BucketProvider
 
 <PageTitle>Counter</PageTitle>
 
@@ -27,8 +27,7 @@
     {
         try
         {
-            var cluster = await ClusterProvider.GetClusterAsync();
-            var bucket = await cluster.BucketAsync("test");
+            var bucket = await BucketProvider.GetBucketAsync("test-bucket");
             var collection = bucket.DefaultCollection();
 
             var result = await collection.GetAsync("counter", new Couchbase.KeyValue.GetOptions()
@@ -50,8 +49,7 @@
     {
         try
         {
-            var cluster = await ClusterProvider.GetClusterAsync();
-            var bucket = await cluster.BucketAsync("test");
+            var bucket = await BucketProvider.GetBucketAsync("test-bucket");
             var collection = bucket.DefaultCollection();
 
             try

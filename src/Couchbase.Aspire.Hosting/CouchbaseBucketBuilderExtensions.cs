@@ -30,8 +30,8 @@ public static class CouchbaseBucketBuilderExtensions
 
         bucketName ??= name;
 
-        builder.Resource.AddBucket(name, bucketName);
         var bucket = new CouchbaseBucketResource(name, bucketName, builder.Resource);
+        builder.Resource.AddBucket(name, bucket);
 
         string? connectionString = null;
         builder.ApplicationBuilder.Eventing.Subscribe<ConnectionStringAvailableEvent>(bucket.Parent, async (@event, ct) =>
@@ -62,6 +62,10 @@ public static class CouchbaseBucketBuilderExtensions
                         options.HttpCertificateCallbackValidation = callback;
                         options.KvCertificateCallbackValidation = callback;
                     }
+
+                    // Only need one connection per node for health checks
+                    options.NumKvConnections = 1;
+                    options.MaxKvConnections = 1;
 
                     return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
                 },

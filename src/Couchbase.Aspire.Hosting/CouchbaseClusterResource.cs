@@ -118,16 +118,16 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
 
     public IEnumerable<CouchbaseServerResource> Servers => _serverGroups.Values.SelectMany(g => g.Servers);
 
-    private readonly Dictionary<string, string> _buckets = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CouchbaseBucketResource> _buckets = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// A dictionary where the key is the resource name and the value is the bucket name.
     /// </summary>
-    public IReadOnlyDictionary<string, string> Buckets => _buckets;
+    public IReadOnlyDictionary<string, CouchbaseBucketResource> Buckets => _buckets;
 
-    internal void AddBucket(string name, string bucketName)
+    internal void AddBucket(string name, CouchbaseBucketResource bucket)
     {
-        _buckets.TryAdd(name, bucketName);
+        _buckets.TryAdd(name, bucket);
     }
 
     IEnumerable<KeyValuePair<string, ReferenceExpression>> IResourceWithConnectionString.GetConnectionProperties()
@@ -135,5 +135,29 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
         yield return new("Username", UserNameReference);
         yield return new("Password", ReferenceExpression.Create($"{PasswordParameter}"));
         yield return new("Uri", ConnectionStringExpression);
+
+        if (_buckets.Count > 0)
+        {
+            var builder = new ReferenceExpressionBuilder();
+
+            var first = true;
+            foreach (var bucket in _buckets.Values)
+            {
+                if (first)
+                {
+                    first = false;
+                }
+                else
+                {
+                    builder.AppendLiteral(",");
+                }
+
+                builder.AppendLiteral(bucket.Name);
+                builder.AppendLiteral("=");
+                builder.AppendFormatted(bucket.BucketNameExpression);
+            }
+
+            yield return new("BucketNameMap", builder.Build());
+        }
     }
 }

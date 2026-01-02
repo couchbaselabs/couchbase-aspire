@@ -6,6 +6,7 @@ using Couchbase.Extensions.Tracing.Otel.Tracing;
 using Couchbase.HealthChecks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 
@@ -88,6 +89,10 @@ public static class AspireCouchbaseExtensions
         {
             settings.Password = password;
         }
+        if (builder.Configuration.GetValue<string>($"{connectionName}_BucketNameMap") is string bucketNameMap)
+        {
+            settings.FillBucketNameMap(bucketNameMap);
+        }
 
         configureSettings?.Invoke(settings);
 
@@ -134,10 +139,14 @@ public static class AspireCouchbaseExtensions
 
         if (serviceKey is null)
         {
+            builder.Services.TryAddSingleton<IBucketProvider>(sp =>
+                new BucketProvider(sp.GetRequiredService<IClusterProvider>(), settings.BucketNameMap));
             builder.Services.AddCouchbase(ConfigureClusterOptions);
         }
         else
         {
+            builder.Services.TryAddKeyedSingleton<IBucketProvider>(serviceKey, (sp, serviceKey) =>
+                new BucketProvider(sp.GetRequiredKeyedService<IClusterProvider>(serviceKey), settings.BucketNameMap));
             builder.Services.AddKeyedCouchbase(serviceKey, ConfigureClusterOptions);
         }
 

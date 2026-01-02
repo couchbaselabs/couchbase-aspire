@@ -36,6 +36,13 @@
                                     "type": "string",
                                     "description": "Gets or sets the password for authenticating with the Couchbase server."
                                 },
+                                "BucketNameMap": {
+                                    "type": "object",
+                                    "description": "Gets or sets a mapping of bucket logical names to physical bucket names.",
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    }
+                                },
                                 "DisableHealthChecks": {
                                     "type": "boolean",
                                     "description": "Gets or sets a boolean value that indicates whether the Couchbase health check is disabled or not.",

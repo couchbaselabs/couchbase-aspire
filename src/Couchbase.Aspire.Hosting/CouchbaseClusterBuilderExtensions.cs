@@ -107,6 +107,10 @@ public static partial class CouchbaseClusterBuilderExtensions
                         options.KvCertificateCallbackValidation = callback;
                     }
 
+                    // Only need one connection per node for health checks
+                    options.NumKvConnections = 1;
+                    options.MaxKvConnections = 1;
+
                     return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
                 },
                 name: healthCheckKey);
