@@ -6,7 +6,8 @@ var builder = DistributedApplication.CreateBuilder(args);
 
 var couchbase = builder.AddCouchbase("couchbase")
     .WithManagementPort(8091) // Optional fixed port number for the primary node
-    .WithSecureManagementPort(18091); // Optional fixed port number for the primary node
+    .WithSecureManagementPort(18091) // Optional fixed port number for the primary node
+    .WithCouchbaseEdition(CouchbaseEdition.Enterprise); // Optional edition, default is Enterprise
 
 // Uncomment this section to test building a secure cluster. This also tests the advanced case of a
 // certificate chain to the root CA. Note that the test web app will not be able to connect because

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.RegularExpressions;
 using Aspire.Hosting;
@@ -88,63 +89,6 @@ public static partial class CouchbaseClusterBuilderExtensions
             }, ct);
         });
 
-        if (builder.ExecutionContext.IsRunMode)
-        {
-            // Add servers based on the number of replicas
-            builder.Eventing.Subscribe<BeforeStartEvent>(async (@event, ct) =>
-            {
-                var settings = await cluster.GetClusterSettingsAsync(builder.ExecutionContext, ct).ConfigureAwait(false);
-
-                ContainerLifetimeAnnotation? containerLifetime = null;
-                if (!cluster.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>())
-                {
-                    // Only apply container lifetimes if no custom CA is specified. If a custom CA is used the containers
-                    // are recreated on every start, regardless of this setting, because the node certificates are not
-                    // regenerated.
-                    cluster.TryGetLastAnnotation(out containerLifetime);
-                }
-
-                var initialNodeFound = false;
-                foreach (var serverGroup in cluster.ServerGroups.Values)
-                {
-                    var serverGroupBuilder = builder.CreateResourceBuilder(serverGroup);
-
-                    var replicaCount = serverGroup.GetReplicaCount();
-                    for (var i = 0; i < replicaCount; i++)
-                    {
-                        var server = serverGroupBuilder.AddServer($"{serverGroup.Name}-{i}", settings);
-
-                        if (containerLifetime is not null)
-                        {
-                            server.WithLifetime(containerLifetime.Lifetime);
-                        }
-
-                        if (!initialNodeFound && serverGroup.Services.HasFlag(CouchbaseServices.Data))
-                        {
-                            initialNodeFound = true;
-                            server.WithAnnotation<CouchbaseInitialNodeAnnotation>();
-
-                            if (settings.ManagementPort is int managementPort)
-                            {
-                                // For the first server, set the static management port number, if configured
-                                server.WithEndpoint(CouchbaseEndpointNames.Management, endpoint => endpoint.Port = managementPort);
-                            }
-                            if (settings.SecureManagementPort is int secureManagementPort && settings.Edition == CouchbaseEdition.Enterprise)
-                            {
-                                // For the first server, set the static management port number, if configured
-                                server.WithEndpoint(CouchbaseEndpointNames.ManagementSecure, endpoint => endpoint.Port = secureManagementPort);
-                            }
-                        }
-
-                        foreach (var configurationCallback in settings.ContainerConfigurationCallbacks)
-                        {
-                            configurationCallback(server);
-                        }
-                    }
-                }
-            });
-        }
-
         var healthCheckKey = $"{name}_check";
         builder.Services.AddHealthChecks()
             .AddCouchbase(
@@ -189,7 +133,7 @@ public static partial class CouchbaseClusterBuilderExtensions
                     {
                         Url = "/",
                         DisplayText = "Web Console",
-                        Endpoint = cluster.Servers.FirstOrDefault(CouchbaseResourceExtensions.IsInitialNode)?.GetManagementEndpoint()
+                        Endpoint = cluster.GetPrimaryServer()?.GetManagementEndpoint()
                     });
                 }
             });
@@ -202,24 +146,20 @@ public static partial class CouchbaseClusterBuilderExtensions
         return clusterBuilder;
     }
 
-    public static IResourceBuilder<CouchbaseClusterResource> WithSettings(this IResourceBuilder<CouchbaseClusterResource> builder, Action<CouchbaseClusterSettingsCallbackContext> configureQuotas)
+    public static IResourceBuilder<CouchbaseClusterResource> WithSettings(this IResourceBuilder<CouchbaseClusterResource> builder, Action<CouchbaseClusterSettingsCallbackContext> configureSettings)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(configureQuotas);
+        ArgumentNullException.ThrowIfNull(configureSettings);
 
-        builder.Resource.Annotations.Add(new CouchbaseClusterSettingsCallbackAnnotation(configureQuotas));
-
-        return builder;
+        return builder.WithAnnotation(new CouchbaseClusterSettingsCallbackAnnotation(configureSettings));
     }
 
-    public static IResourceBuilder<CouchbaseClusterResource> WithSettings(this IResourceBuilder<CouchbaseClusterResource> builder, Func<CouchbaseClusterSettingsCallbackContext, Task> configureQuotas)
+    public static IResourceBuilder<CouchbaseClusterResource> WithSettings(this IResourceBuilder<CouchbaseClusterResource> builder, Func<CouchbaseClusterSettingsCallbackContext, Task> configureSettings)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(configureQuotas);
+        ArgumentNullException.ThrowIfNull(configureSettings);
 
-        builder.Resource.Annotations.Add(new CouchbaseClusterSettingsCallbackAnnotation(configureQuotas));
-
-        return builder;
+        return builder.WithAnnotation(new CouchbaseClusterSettingsCallbackAnnotation(configureSettings));
     }
 
     public static IResourceBuilder<CouchbaseClusterResource> WithMemoryQuotas(this IResourceBuilder<CouchbaseClusterResource> builder, CouchbaseMemoryQuotas? quotas)
@@ -242,10 +182,22 @@ public static partial class CouchbaseClusterBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.WithSettings(context =>
+        if (!builder.Resource.TryGetLastAnnotation<CouchbasePortsAnnotation>(out var annotation))
         {
-            context.Settings.ManagementPort = port;
-        });
+            annotation = new CouchbasePortsAnnotation { ManagementPort = port };
+            builder.WithAnnotation(annotation);
+        }
+        else
+        {
+            annotation.ManagementPort = port;
+        }
+
+        if (builder.Resource.GetPrimaryServer() is CouchbaseServerResource primaryServer)
+        {
+            annotation.ApplyToServer(builder.ApplicationBuilder.CreateResourceBuilder(primaryServer));
+        }
+
+        return builder;
     }
 
     /// <summary>
@@ -258,22 +210,39 @@ public static partial class CouchbaseClusterBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.WithSettings(context =>
+        if (!builder.Resource.TryGetLastAnnotation<CouchbasePortsAnnotation>(out var annotation))
         {
-            context.Settings.SecureManagementPort = port;
-        });
+            annotation = new CouchbasePortsAnnotation { SecureManagementPort = port };
+            builder.WithAnnotation(annotation);
+        }
+        else
+        {
+            annotation.SecureManagementPort = port;
+        }
+
+        if (builder.Resource.GetPrimaryServer() is CouchbaseServerResource primaryServer)
+        {
+            annotation.ApplyToServer(builder.ApplicationBuilder.CreateResourceBuilder(primaryServer));
+        }
+
+        return builder;
     }
 
-    private static IResourceBuilder<CouchbaseClusterResource> WithContainerConfiguration(this IResourceBuilder<CouchbaseClusterResource> builder,
-        Action<IResourceBuilder<CouchbaseServerResource>> callback)
+    private static IResourceBuilder<CouchbaseClusterResource> WithContainerImage(this IResourceBuilder<CouchbaseClusterResource> builder,
+        Action<CouchbaseContainerImageAnnotation> callback)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(callback);
 
-        return builder.WithSettings(context =>
+        if (!builder.Resource.TryGetLastAnnotation<CouchbaseContainerImageAnnotation>(out var annotation))
         {
-            context.Settings.ContainerConfigurationCallbacks.Add(callback);
-        });
+            annotation = new CouchbaseContainerImageAnnotation();
+            builder.WithAnnotation(annotation);
+        }
+
+        callback(annotation);
+
+        return builder.UpdateExistingServers();
     }
 
     /// <summary>
@@ -286,10 +255,7 @@ public static partial class CouchbaseClusterBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.WithContainerConfiguration(serverBuilder =>
-        {
-            serverBuilder.WithImageRegistry(registry);
-        });
+        return builder.WithContainerImage(annotation => annotation.ImageRegistry = registry);
     }
 
     /// <summary>
@@ -304,9 +270,9 @@ public static partial class CouchbaseClusterBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(image);
 
-        return builder.WithContainerConfiguration(serverBuilder =>
-        {
-            serverBuilder.WithImage(image, tag);
+        return builder.WithContainerImage(annotation => {
+            annotation.Image = image;
+            annotation.ImageTag = tag;
         });
     }
 
@@ -321,10 +287,7 @@ public static partial class CouchbaseClusterBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(tag);
 
-        return builder.WithContainerConfiguration(serverBuilder =>
-        {
-            serverBuilder.WithImageTag(tag);
-        });
+        return builder.WithContainerImage(annotation => annotation.ImageTag = tag);
     }
 
     /// <summary>
@@ -345,36 +308,37 @@ public static partial class CouchbaseClusterBuilderExtensions
             throw new ArgumentException($"{nameof(edition)} is not a valid Couchbase edition.", nameof(edition));
         }
 
-        return builder
-            .WithSettings(context =>
+        // Note: WithContainerImage invokes UpdateExistingServers
+        builder
+            .WithAnnotation(new CouchbaseEditionAnnotation { Edition = edition }, ResourceAnnotationMutationBehavior.Replace)
+            .WithContainerImage(annotation =>
             {
-                context.Settings.Edition = edition;
-            })
-            .WithContainerConfiguration(serverBuilder =>
-            {
-                if (serverBuilder.Resource.TryGetLastAnnotation<ContainerImageAnnotation>(out var annotation))
+                var tag = annotation.ImageTag;
+                if (tag is not null)
                 {
-                    var tag = annotation.Tag;
-                    if (tag is not null)
+                    // Remove the current prefix, if present
+                    if (tag.StartsWith(EnterpriseTagPrefix))
                     {
-                        // Remove the current prefix, if present
-                        if (tag.StartsWith(EnterpriseTagPrefix))
-                        {
-                            tag = tag[EnterpriseTagPrefix.Length..];
-                        }
-                        else if (tag.StartsWith(CommunityTagPrefix))
-                        {
-                            tag = tag[CommunityTagPrefix.Length..];
-                        }
+                        tag = tag[EnterpriseTagPrefix.Length..];
+                    }
+                    else if (tag.StartsWith(CommunityTagPrefix))
+                    {
+                        tag = tag[CommunityTagPrefix.Length..];
+                    }
 
-                        // Add the prefix if the current tag is a simple version number
-                        if (VersionTagRegex().IsMatch(tag))
-                        {
-                            annotation.Tag = $"{(edition == CouchbaseEdition.Enterprise ? EnterpriseTagPrefix : CommunityTagPrefix)}{tag}";
-                        }
+                    // Add the prefix if the current tag is a simple version number
+                    if (VersionTagRegex().IsMatch(tag))
+                    {
+                        annotation.ImageTag = $"{(edition == CouchbaseEdition.Enterprise ? EnterpriseTagPrefix : CommunityTagPrefix)}{tag}";
                     }
                 }
+                else
+                {
+                    annotation.ImageTag = $"{(edition == CouchbaseEdition.Enterprise ? EnterpriseTagPrefix : CommunityTagPrefix)}{CouchbaseContainerImageTags.Tag}";
+                }
             });
+
+        return builder;
     }
 
     /// <summary>
@@ -398,6 +362,12 @@ public static partial class CouchbaseClusterBuilderExtensions
         if (!caCertificate.HasPrivateKey)
         {
             throw new InvalidOperationException($"{nameof(caCertificate)} must include a private key.");
+        }
+
+        if (builder.Resource.TryGetLastAnnotation<ContainerLifetimeAnnotation>(out var lifetimeAnnotation) &&
+            lifetimeAnnotation.Lifetime == ContainerLifetime.Persistent)
+        {
+            ThrowLifetimeIncompatibleException();
         }
 
         var annotation = new CouchbaseCertificateAuthorityAnnotation(caCertificate)
@@ -428,7 +398,27 @@ public static partial class CouchbaseClusterBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.WithAnnotation(new ContainerLifetimeAnnotation { Lifetime = lifetime }, ResourceAnnotationMutationBehavior.Replace);
+        if (lifetime == ContainerLifetime.Persistent && builder.Resource.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>())
+        {
+            ThrowLifetimeIncompatibleException();
+        }
+
+        return builder
+            .WithAnnotation(new ContainerLifetimeAnnotation { Lifetime = lifetime }, ResourceAnnotationMutationBehavior.Replace)
+            .UpdateExistingServers();
+    }
+
+    private static IResourceBuilder<CouchbaseClusterResource> UpdateExistingServers(this IResourceBuilder<CouchbaseClusterResource> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        foreach (var server in builder.Resource.Servers)
+        {
+            var serverBuilder = builder.ApplicationBuilder.CreateResourceBuilder(server);
+            serverBuilder.WithClusterConfiguration();
+        }
+
+        return builder;
     }
 
     private static void AddClusterInitializer(IResourceBuilder<CouchbaseClusterResource> cluster)
@@ -449,7 +439,8 @@ public static partial class CouchbaseClusterBuilderExtensions
                     new(CustomResourceKnownProperties.Source, "Couchbase")
                 ]
             })
-            .WithParentRelationship(cluster);
+            .WithParentRelationship(cluster)
+            .ExcludeFromManifest();
 
         cluster.ApplicationBuilder.Services.AddHttpClient(initializerResource.Name)
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
@@ -500,5 +491,11 @@ public static partial class CouchbaseClusterBuilderExtensions
 
             return Task.CompletedTask;
         });
+    }
+
+    [DoesNotReturn]
+    private static void ThrowLifetimeIncompatibleException()
+    {
+        throw new InvalidOperationException("Persistent container lifetime is not compatible with a custom root certification authority.");
     }
 }

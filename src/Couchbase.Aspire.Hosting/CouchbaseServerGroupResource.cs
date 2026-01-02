@@ -19,15 +19,32 @@ public class CouchbaseServerGroupResource : Resource, IResourceWithoutLifetime
 
     public CouchbaseServices Services { get; }
 
-    private readonly Dictionary<string, CouchbaseServerResource> _servers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<CouchbaseServerResource> _servers = [];
 
     /// <summary>
-    /// A dictionary where the key is the resource name and the value is the bucket name.
+    /// A list of servers in order of their replica number.
     /// </summary>
-    public IReadOnlyDictionary<string, CouchbaseServerResource> Servers => _servers;
+    public IReadOnlyList<CouchbaseServerResource> Servers => _servers;
 
-    internal void AddServer(string name, CouchbaseServerResource server)
+    internal void AddServer(CouchbaseServerResource server)
     {
-        _servers.TryAdd(name, server);
+        _servers.Add(server);
+    }
+
+    /// <summary>
+    /// Removes excess servers beyond the specified maximum number of replicas.
+    /// </summary>
+    /// <param name="maximumReplicas">Maximum replicas.</param>
+    /// <returns>Servers that were removed.</returns>
+    internal List<CouchbaseServerResource> RemoveExcessServers(int maximumReplicas)
+    {
+        if (_servers.Count <= maximumReplicas)
+        {
+            return [];
+        }
+
+        var removedServers = _servers.Skip(maximumReplicas).ToList();
+        _servers.RemoveRange(maximumReplicas, _servers.Count - maximumReplicas);
+        return removedServers;
     }
 }

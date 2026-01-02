@@ -43,6 +43,18 @@ internal static class CouchbaseResourceExtensions
         return settingsContext.Settings;
     }
 
+    public static CouchbaseEdition GetCouchbaseEdition(this CouchbaseClusterResource cluster)
+    {
+        ArgumentNullException.ThrowIfNull(cluster);
+
+        if (cluster.TryGetLastAnnotation<CouchbaseEditionAnnotation>(out var annotation))
+        {
+            return annotation.Edition;
+        }
+
+        return CouchbaseEdition.Enterprise;
+    }
+
     public static CouchbaseCertificateAuthorityAnnotation? GetClusterCertificationAuthority(this CouchbaseClusterResource cluster)
     {
         if (cluster.TryGetLastAnnotation<CouchbaseCertificateAuthorityAnnotation>(out var annotation) &&
@@ -69,8 +81,14 @@ internal static class CouchbaseResourceExtensions
         return settingsContext.Settings;
     }
 
-    public static bool IsInitialNode(this CouchbaseServerResource server) =>
-        server.HasAnnotationOfType<CouchbaseInitialNodeAnnotation>();
+    public static bool HasPrimaryServer(this CouchbaseClusterResource cluster) =>
+        cluster.GetPrimaryServer() is not null;
+
+    public static CouchbaseServerResource? GetPrimaryServer(this CouchbaseClusterResource cluster) =>
+        cluster.Servers.FirstOrDefault(IsPrimaryServer);
+
+    public static bool IsPrimaryServer(this CouchbaseServerResource server) =>
+        server.HasAnnotationOfType<CouchbasePrimaryServerAnnotation>();
 
     public static EndpointReference GetManagementEndpoint(this CouchbaseServerResource server, bool preferInsecure = false) =>
         !preferInsecure && server.Cluster.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>()

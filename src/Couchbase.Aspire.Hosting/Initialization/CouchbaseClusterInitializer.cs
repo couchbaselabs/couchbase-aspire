@@ -66,7 +66,7 @@ internal sealed class CouchbaseClusterInitializer(
 
         try
         {
-            var initialNode = Cluster.Servers.FirstOrDefault(CouchbaseResourceExtensions.IsInitialNode);
+            var initialNode = Cluster.GetPrimaryServer();
             if (initialNode is null)
             {
                 throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");
@@ -194,7 +194,7 @@ internal sealed class CouchbaseClusterInitializer(
             { "port", "SAME" },
         };
 
-        if (settings.Edition == CouchbaseEdition.Enterprise)
+        if (Cluster.GetCouchbaseEdition() == CouchbaseEdition.Enterprise)
         {
             // These parameters are only supported on Enterprise edition
             dictionary.Add("cbasMemoryQuota", quotas.AnalyticsServiceMegabytes.ToString(CultureInfo.InvariantCulture));

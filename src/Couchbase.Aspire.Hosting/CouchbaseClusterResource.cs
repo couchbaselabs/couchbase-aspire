@@ -75,7 +75,7 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
 
         var servers = _serverGroups.Values
             .Where(p => p.Services.HasFlag(CouchbaseServices.Data))
-            .SelectMany(p => p.Servers.Values);
+            .SelectMany(p => p.Servers);
 
         var first = true;
         foreach (var server in servers)
@@ -116,7 +116,7 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
         _serverGroups.TryAdd(name, serverGroup);
     }
 
-    public IEnumerable<CouchbaseServerResource> Servers => _serverGroups.Values.SelectMany(g => g.Servers.Values);
+    public IEnumerable<CouchbaseServerResource> Servers => _serverGroups.Values.SelectMany(g => g.Servers);
 
     private readonly Dictionary<string, string> _buckets = new(StringComparer.OrdinalIgnoreCase);
 

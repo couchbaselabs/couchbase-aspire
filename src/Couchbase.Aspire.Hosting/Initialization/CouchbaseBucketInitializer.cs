@@ -69,7 +69,7 @@ internal class CouchbaseBucketInitializer(
 
     public async Task InitializeBucketAsync(CancellationToken cancellationToken = default)
     {
-        var node = bucket.Parent.Servers.Where(CouchbaseResourceExtensions.IsInitialNode).FirstOrDefault();
+        var node = bucket.Parent.Servers.Where(CouchbaseResourceExtensions.IsPrimaryServer).FirstOrDefault();
         if (node is null)
         {
             throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");

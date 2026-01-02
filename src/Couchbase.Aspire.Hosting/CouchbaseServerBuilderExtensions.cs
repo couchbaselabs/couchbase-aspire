@@ -8,17 +8,15 @@ namespace Couchbase.Aspire.Hosting;
 internal static class CouchbaseServerBuilderExtensions
 {
     public static IResourceBuilder<CouchbaseServerResource> AddServer(this IResourceBuilder<CouchbaseServerGroupResource> builder,
-        [ResourceName] string name, CouchbaseClusterSettings settings)
+        [ResourceName] string name)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        var isEnterprise = settings.Edition == CouchbaseEdition.Enterprise;
-
         var cluster = builder.Resource.Parent;
 
-        var server = new CouchbaseServerResource(name, builder.Resource, settings.Edition);
-        builder.Resource.AddServer(name, server);
+        var server = new CouchbaseServerResource(name, builder.Resource);
+        builder.Resource.AddServer(server);
 
         var serverBuilder = builder.ApplicationBuilder.AddResource(server)
             .WithParentRelationship(builder)
@@ -60,7 +58,11 @@ internal static class CouchbaseServerBuilderExtensions
                     }
                 }
             })
-            .WithNodeCertificate();
+            .WithNodeCertificate()
+            .ExcludeFromManifest();
+
+        // Add ports for insecure services only, secure services are added dynamically based on the
+        // Couchbase edition in ServerConfigurationActions
 
         var services = server.Services;
         if (services.HasFlag(CouchbaseServices.Data))
@@ -97,44 +99,56 @@ internal static class CouchbaseServerBuilderExtensions
             serverBuilder.WithEndpoint(targetPort: 8097, name: CouchbaseEndpointNames.Backup, scheme: "http");
         }
 
-        if (settings.Edition == CouchbaseEdition.Enterprise)
+        // Apply common configuration from the cluster, including secure endpoints
+        serverBuilder.WithClusterConfiguration();
+
+        // This must be done after applying secure endpoints
+        if (services.HasFlag(CouchbaseServices.Data) && !server.Cluster.HasPrimaryServer())
         {
-            serverBuilder.WithEndpoint(targetPort: 18091, name: CouchbaseEndpointNames.ManagementSecure, scheme: "https");
-
-            if (services.HasFlag(CouchbaseServices.Data))
-            {
-                serverBuilder
-                    .WithEndpoint(targetPort: 11207, name: CouchbaseEndpointNames.DataSecure, scheme: "couchbases")
-                    .WithEndpoint(targetPort: 18092, name: CouchbaseEndpointNames.ViewsSecure, scheme: "https");
-            }
-
-            if (services.HasFlag(CouchbaseServices.Query))
-            {
-                serverBuilder.WithEndpoint(targetPort: 18093, name: CouchbaseEndpointNames.QuerySecure, scheme: "https");
-            }
-
-            if (services.HasFlag(CouchbaseServices.Fts))
-            {
-                serverBuilder.WithEndpoint(targetPort: 18094, name: CouchbaseEndpointNames.FtsSecure, scheme: "https");
-            }
-
-            if (services.HasFlag(CouchbaseServices.Analytics))
-            {
-                serverBuilder.WithEndpoint(targetPort: 18095, name: CouchbaseEndpointNames.AnalyticsSecure, scheme: "https");
-            }
-
-            if (services.HasFlag(CouchbaseServices.Eventing))
-            {
-                serverBuilder.WithEndpoint(targetPort: 18096, name: CouchbaseEndpointNames.EventingSecure, scheme: "https");
-            }
-
-            if (services.HasFlag(CouchbaseServices.Backup))
-            {
-                serverBuilder.WithEndpoint(targetPort: 18097, name: CouchbaseEndpointNames.BackupSecure, scheme: "https");
-            }
+            serverBuilder.WithPrimaryServerConfiguration();
         }
 
         return serverBuilder;
+    }
+
+    internal static IResourceBuilder<CouchbaseServerResource> WithPrimaryServerConfiguration(this IResourceBuilder<CouchbaseServerResource> builder)
+    {
+        builder.WithAnnotation<CouchbasePrimaryServerAnnotation>();
+
+        if (builder.Resource.Cluster.TryGetLastAnnotation<CouchbasePortsAnnotation>(out var portsAnnotation))
+        {
+            portsAnnotation.ApplyToServer(builder);
+        }
+
+        return builder;
+    }
+
+    internal static IResourceBuilder<CouchbaseServerResource> WithClusterConfiguration(this IResourceBuilder<CouchbaseServerResource> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        var cluster = builder.Resource.Cluster;
+        if (cluster.TryGetLastAnnotation<ContainerLifetimeAnnotation>(out var containerLifetime))
+        {
+            builder.WithLifetime(containerLifetime.Lifetime);
+        }
+
+        if (cluster.TryGetLastAnnotation<CouchbaseContainerImageAnnotation>(out var image))
+        {
+            image.ApplyToServer(builder);
+        }
+
+        if (cluster.TryGetLastAnnotation<CouchbaseEditionAnnotation>(out var edition))
+        {
+            edition.ApplyToServer(builder);
+        }
+        else
+        {
+            // Apply the default edition
+            CouchbaseEditionAnnotation.ApplyToServer(builder, CouchbaseEdition.Enterprise);
+        }
+
+        return builder;
     }
 
     private static IResourceBuilder<CouchbaseServerResource> WithNodeCertificate(this IResourceBuilder<CouchbaseServerResource> builder)

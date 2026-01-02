@@ -10,26 +10,9 @@ namespace Couchbase.Aspire.Hosting;
 public class CouchbaseClusterSettings
 {
     /// <summary>
-    /// Edition of Couchbase Server.
-    /// </summary>
-    public CouchbaseEdition Edition { get; set; } = CouchbaseEdition.Enterprise;
-
-    /// <summary>
-    /// Static management port for the Couchbase cluster.
-    /// </summary>
-    public int? ManagementPort { get; set; }
-
-    /// <summary>
-    /// Static secure management port for the Couchbase cluster.
-    /// </summary>
-    public int? SecureManagementPort { get; set; }
-
-    /// <summary>
     /// Per-node memory quotas for the Couchbase services.
     /// </summary>
     public CouchbaseMemoryQuotas? MemoryQuotas { get; set; }
-
-    internal List<Action<IResourceBuilder<CouchbaseServerResource>>> ContainerConfigurationCallbacks { get; } = [];
 }
 
 /// <summary>
@@ -48,7 +31,6 @@ public class CouchbaseMemoryQuotas
     private string DebuggerToString() =>
         $"Data = {DataServiceMegabytes}, Query = {QueryServiceMegabytes}, Index = {IndexServiceMegabytes}, Fts = {FtsServiceMegabytes}, Analytics = {AnalyticsServiceMegabytes}, Eventing = {EventingServiceMegabytes}";
 }
-
 
 /// <summary>
 /// Represents a callback context for settings associated with a cluster.

@@ -4,27 +4,19 @@ namespace Couchbase.Aspire.Hosting;
 
 public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironment, IResource
 {
-    public CouchbaseServerResource(string name, CouchbaseServerGroupResource parent, CouchbaseEdition edition) : base(name)
+    public CouchbaseServerResource(string name, CouchbaseServerGroupResource parent) : base(name)
     {
         ArgumentNullException.ThrowIfNull(parent);
 
         Parent = parent;
 
         ManagementEndpoint = new EndpointReference(this, CouchbaseEndpointNames.Management);
-
-        if (edition == CouchbaseEdition.Enterprise)
-        {
-            ManagementSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.ManagementSecure);
-        }
+        ManagementSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.ManagementSecure);
 
         if (parent.Services.HasFlag(CouchbaseServices.Data))
         {
             DataEndpoint = new EndpointReference(this, CouchbaseEndpointNames.Data);
-
-            if (edition == CouchbaseEdition.Enterprise)
-            {
-                DataSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.DataSecure);
-            }
+            DataSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.DataSecure);
         }
     }
 
@@ -39,13 +31,30 @@ public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironme
     // is built, aren't public.
     public string NodeName => $"{Name}.dev.internal";
 
+    /// <summary>
+    /// Gets the management endpoint for this resource.
+    /// </summary>
     public EndpointReference ManagementEndpoint { get; }
 
-    public EndpointReference? ManagementSecureEndpoint { get; }
-
+    /// <summary>
+    /// Gets the data endpoint for this resource.
+    /// </summary>
     public EndpointReference? DataEndpoint { get; }
 
+    // Secure endpoints may or may not exist, and can change after initial resource creation based
+    // on the Couchbase edition, so find them dynamically
+
+    /// <summary>
+    /// Gets the secure management endpoint for this resource.
+    /// </summary>
+    public EndpointReference? ManagementSecureEndpoint { get; }
+        //this.GetEndpoints().FirstOrDefault(p => StringComparer.OrdinalIgnoreCase.Equals(p.EndpointName, CouchbaseEndpointNames.ManagementSecure));
+
+    /// <summary>
+    /// Gets the secure data endpoint for this resource.
+    /// </summary>
     public EndpointReference? DataSecureEndpoint { get; }
+        //this.GetEndpoints().FirstOrDefault(p => StringComparer.OrdinalIgnoreCase.Equals(p.EndpointName, CouchbaseEndpointNames.DataSecure));
 
     /// <summary>
     /// Gets the host and port endpoint reference for this resource.

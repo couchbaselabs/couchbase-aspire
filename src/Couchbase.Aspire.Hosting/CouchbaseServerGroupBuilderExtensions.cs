@@ -32,7 +32,8 @@ public static class CouchbaseServerGroupBuilderExtensions
                 ]
             })
             .WithParentRelationship(builder)
-            .WithIconName("ServerMultiple");
+            .WithIconName("ServerMultiple")
+            .WithReplicas(1);
 
         return serverGroupBuilder;
     }
@@ -40,7 +41,35 @@ public static class CouchbaseServerGroupBuilderExtensions
     public static IResourceBuilder<CouchbaseServerGroupResource> WithReplicas(this IResourceBuilder<CouchbaseServerGroupResource> builder, int replicas)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        builder.WithAnnotation(new ReplicaAnnotation(replicas));
+        builder.WithAnnotation(new ReplicaAnnotation(replicas), ResourceAnnotationMutationBehavior.Replace);
+
+        var removedServers = builder.Resource.RemoveExcessServers(replicas);
+        if (removedServers.Count > 0)
+        {
+            // Number of replicas was lowered
+            foreach (var server in removedServers)
+            {
+                builder.ApplicationBuilder.Resources.Remove(server);
+            }
+
+            if (!builder.Resource.Parent.HasPrimaryServer())
+            {
+                // Find a new initial node
+                var newPrimaryServer = builder.Resource.Parent.Servers.FirstOrDefault(p => p.Services.HasFlag(CouchbaseServices.Data));
+                if (newPrimaryServer is not null)
+                {
+                    builder.ApplicationBuilder.CreateResourceBuilder(newPrimaryServer).WithPrimaryServerConfiguration();
+                }
+            }
+        }
+        else
+        {
+            for (int i=builder.Resource.Servers.Count; i < replicas; i++)
+            {
+                builder.AddServer($"{builder.Resource.Name}-{i}");
+            }
+        }
+
         return builder;
     }
 }
