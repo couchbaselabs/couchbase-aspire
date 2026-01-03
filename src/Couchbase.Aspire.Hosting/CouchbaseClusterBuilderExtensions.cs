@@ -463,7 +463,8 @@ public static partial class CouchbaseClusterBuilderExtensions
             .WithParentRelationship(cluster)
             .ExcludeFromManifest();
 
-        cluster.ApplicationBuilder.Services.AddHttpClient(initializerResource.Name)
+        var httpClientName = $"{initializerResource.Name}-client";
+        cluster.ApplicationBuilder.Services.AddHttpClient(httpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
                 SslOptions =
@@ -477,18 +478,7 @@ public static partial class CouchbaseClusterBuilderExtensions
             })
             .RemoveAllLoggers();
 
-        cluster.ApplicationBuilder.Services.AddKeyedSingleton(initializerResource,
-            static (sp, key) =>
-            {
-                var initializerResource = (CouchbaseClusterInitializerResource)key;
-
-                return new CouchbaseClusterInitializer(
-                    initializerResource,
-                    sp.GetRequiredService<DistributedApplicationExecutionContext>(),
-                    sp.GetRequiredService<IHttpClientFactory>().CreateClient(initializerResource.Name),
-                    sp.GetRequiredService<ResourceLoggerService>().GetLogger(initializerResource),
-                    sp.GetRequiredService<ResourceNotificationService>());
-            });
+        cluster.ApplicationBuilder.Services.TryAddTransient<ICouchbaseClusterInitializerFactory, CouchbaseClusterInitializerFactory>();
 
         cluster.ApplicationBuilder.Eventing.Subscribe<InitializeResourceEvent>(initializerResource, (@event, ct) =>
         {
@@ -496,7 +486,8 @@ public static partial class CouchbaseClusterBuilderExtensions
             {
                 try
                 {
-                    var initializer = initializerResource.GetClusterInitializer(@event.Services);
+                    var initializer = @event.Services.GetRequiredService<ICouchbaseClusterInitializerFactory>()
+                        .Create(initializerResource, httpClientName);
 
                     await initializer.InitializeAsync(ct).ConfigureAwait(false);
                 }
