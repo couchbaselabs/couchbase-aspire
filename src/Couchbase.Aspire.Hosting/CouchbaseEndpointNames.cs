@@ -17,6 +17,30 @@ public static class CouchbaseEndpointNames
         BackupSecure
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Maps endpoint names to their corresponding service names for alternate port mappings.
+    /// </summary>
+    internal static FrozenDictionary<string, string> EndpointNameServiceMappings { get; } =
+        ((IEnumerable<KeyValuePair<string, string>>)[
+            new(CouchbaseEndpointNames.Management, "mgmt"),
+            new(CouchbaseEndpointNames.ManagementSecure, "mgmtSSL"),
+            new(CouchbaseEndpointNames.Data, "kv"),
+            new(CouchbaseEndpointNames.DataSecure, "kvSSL"),
+            new(CouchbaseEndpointNames.Views, "capi"),
+            new(CouchbaseEndpointNames.ViewsSecure, "capiSSL"),
+            new(CouchbaseEndpointNames.Query, "n1ql"),
+            new(CouchbaseEndpointNames.QuerySecure, "n1qlSSL"),
+            new(CouchbaseEndpointNames.Fts, "fts"),
+            new(CouchbaseEndpointNames.FtsSecure, "ftsSSL"),
+            new(CouchbaseEndpointNames.Analytics, "cbas"),
+            new(CouchbaseEndpointNames.AnalyticsSecure, "cbasSSL"),
+            new(CouchbaseEndpointNames.Eventing, "eventingAdminPort"),
+            new(CouchbaseEndpointNames.EventingSecure, "eventingSSL"),
+            new(CouchbaseEndpointNames.EventingDebug, "eventingDebug"),
+            new(CouchbaseEndpointNames.Backup, "backupAPI"),
+            new(CouchbaseEndpointNames.BackupSecure, "backupAPIHTTPS"),
+        ]).ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
     public const string Analytics = "analytics";
     public const string AnalyticsSecure = "analytics-secure";
 

@@ -13,27 +13,6 @@ internal sealed class CouchbaseClusterInitializer(
     ResourceLoggerService resourceLoggerService,
     ResourceNotificationService resourceNotificationService)
 {
-    private static readonly FrozenDictionary<string, string> EndpointNameServiceMappings =
-        ((IEnumerable<KeyValuePair<string, string>>)[
-            new(CouchbaseEndpointNames.Management, "mgmt"),
-            new(CouchbaseEndpointNames.ManagementSecure, "mgmtSSL"),
-            new(CouchbaseEndpointNames.Data, "kv"),
-            new(CouchbaseEndpointNames.DataSecure, "kvSSL"),
-            new(CouchbaseEndpointNames.Views, "capi"),
-            new(CouchbaseEndpointNames.ViewsSecure, "capiSSL"),
-            new(CouchbaseEndpointNames.Query, "n1ql"),
-            new(CouchbaseEndpointNames.QuerySecure, "n1qlSSL"),
-            new(CouchbaseEndpointNames.Fts, "fts"),
-            new(CouchbaseEndpointNames.FtsSecure, "ftsSSL"),
-            new(CouchbaseEndpointNames.Analytics, "cbas"),
-            new(CouchbaseEndpointNames.AnalyticsSecure, "cbasSSL"),
-            new(CouchbaseEndpointNames.Eventing, "eventingAdminPort"),
-            new(CouchbaseEndpointNames.EventingSecure, "eventingSSL"),
-            new(CouchbaseEndpointNames.EventingDebug, "eventingDebug"),
-            new(CouchbaseEndpointNames.Backup, "backupAPI"),
-            new(CouchbaseEndpointNames.BackupSecure, "backupAPIHTTPS"),
-        ]).ToFrozenDictionary();
-
     private readonly ILogger _logger = resourceLoggerService.GetLogger(initializer);
     private CouchbaseClusterResource Cluster => initializer.Parent;
 
@@ -192,7 +171,7 @@ internal sealed class CouchbaseClusterInitializer(
         var ports = new Dictionary<string, string>();
         foreach (var endpoint in endpoints)
         {
-            if (EndpointNameServiceMappings.TryGetValue(endpoint.Name, out var serviceName))
+            if (CouchbaseEndpointNames.EndpointNameServiceMappings.TryGetValue(endpoint.Name, out var serviceName))
             {
                 var port = await new EndpointReference(node, endpoint).Property(EndpointProperty.Port)
                     .GetValueAsync(cancellationToken).ConfigureAwait(false);
