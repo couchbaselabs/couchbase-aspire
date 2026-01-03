@@ -4,7 +4,7 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Preview">
-    <MicrosoftExtensionsConfigurationAbstractionsPreviewVersion>10.0.1</MicrosoftExtensionsConfigurationAbstractionsPreviewVersion>
+    <MicrosoftExtensionsConfigurationBinderPreviewVersion>10.0.1</MicrosoftExtensionsConfigurationBinderPreviewVersion>
     <MicrosoftExtensionsDiagnosticsHealthChecksPreviewVersion>10.0.1</MicrosoftExtensionsDiagnosticsHealthChecksPreviewVersion>
     <MicrosoftExtensionsHostingAbstractionsPreviewVersion>10.0.1</MicrosoftExtensionsHostingAbstractionsPreviewVersion>
   </PropertyGroup>
