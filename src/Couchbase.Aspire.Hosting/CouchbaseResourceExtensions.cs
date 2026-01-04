@@ -6,18 +6,6 @@ namespace Couchbase.Aspire.Hosting;
 
 internal static class CouchbaseResourceExtensions
 {
-    public static CouchbaseClusterInitializerResource? GetClusterInitializerResource(this CouchbaseClusterResource cluster)
-    {
-        ArgumentNullException.ThrowIfNull(cluster);
-
-        if (cluster.TryGetLastAnnotation<CouchbaseClusterInitializerAnnotation>(out var annotation))
-        {
-            return annotation.Initializer;
-        }
-
-        return null;
-    }
-
     public static async Task<CouchbaseClusterSettings> GetClusterSettingsAsync(this CouchbaseClusterResource cluster, DistributedApplicationExecutionContext executionContext,
         CancellationToken cancellationToken = default)
     {

@@ -41,6 +41,7 @@ public static partial class CouchbaseClusterBuilderExtensions
         ArgumentException.ThrowIfNullOrEmpty(name);
 
         builder.Services.TryAddSingleton<CouchbaseNodeCertificateProvider>();
+        builder.Services.TryAddTransient<ICouchbaseClusterInitializerFactory, CouchbaseClusterInitializerFactory>();
 
         // don't use special characters in the password, since it goes into a URI
         var passwordParameter = password?.Resource ?? ParameterResourceBuilderExtensions.CreateDefaultPasswordParameter(builder, $"{name}-password", special: false);
@@ -58,36 +59,31 @@ public static partial class CouchbaseClusterBuilderExtensions
             }
         });
 
-        builder.Eventing.Subscribe<InitializeResourceEvent>(async (@event, ct) =>
+        builder.Eventing.Subscribe<ResourceEndpointsAllocatedEvent>(cluster, static async (@event, ct) =>
         {
-            _ = Task.Run(async () =>
+            var rns = @event.Services.GetRequiredService<ResourceNotificationService>();
+
+            await rns.PublishUpdateAsync(@event.Resource, s => s with
             {
-                var rns = @event.Services.GetRequiredService<ResourceNotificationService>();
-
-                await rns.WaitForResourceAsync(cluster.Name, KnownResourceStates.Running, ct)
-                    .ConfigureAwait(false);
-
-                // Since this is a custom resource, we must publish these events manually to trigger URLs, connection strings,
-                // and health checks.
-                await builder.Eventing.PublishAsync(new ResourceEndpointsAllocatedEvent(cluster, @event.Services), ct)
-                    .ConfigureAwait(false);
-                await builder.Eventing.PublishAsync(new ConnectionStringAvailableEvent(cluster, @event.Services), ct)
-                    .ConfigureAwait(false);
-
-                var userName = await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false);
-                var password = await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false);
-
-                await rns.PublishUpdateAsync(cluster, s => s with
-                {
-                    Urls = [.. s.Urls.Select(p => p with { IsInactive = false })],
-                    EnvironmentVariables = [
-                        // These are useful for logging into the console, the only way we can display them on the dashboard currently is via environment variables
-                        new("CB_USERNAME", userName, true),
-                        new("CB_PASSWORD", password, true)
-                    ]
-                });
-            }, ct);
+                // Mark the URLs as active now that endpoints are allocated
+                Urls = [.. s.Urls.Select(p => p with { IsInactive = false })],
+            }).ConfigureAwait(false);
         });
+
+        var httpClientName = $"{name}-client";
+        builder.Services.AddHttpClient(httpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                SslOptions =
+                {
+                    // Trust the CA certificate, applicable
+                    RemoteCertificateValidationCallback =
+                        cluster.GetClusterCertificationAuthority() is { TrustCertificate: true } annotation
+                            ? annotation.CreateValidationCallback()
+                            : null
+                }
+            })
+            .RemoveAllLoggers();
 
         var healthCheckKey = $"{name}_check";
         builder.Services.AddHealthChecks()
@@ -116,7 +112,7 @@ public static partial class CouchbaseClusterBuilderExtensions
                 name: healthCheckKey);
 
         int urlAdded = 0;
-        var clusterBuilder = builder.AddResource(cluster)
+        return builder.AddResource(cluster)
             .WithInitialState(new()
             {
                 ResourceType = "CouchbaseCluster",
@@ -140,14 +136,30 @@ public static partial class CouchbaseClusterBuilderExtensions
                         Endpoint = cluster.GetPrimaryServer()?.GetManagementEndpoint()
                     });
                 }
+            })
+            .OnInitializeResource((resource, @event, ct) =>
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var initializer = @event.Services.GetRequiredService<ICouchbaseClusterInitializerFactory>()
+                            .Create(resource, httpClientName);
+
+                        await initializer.InitializeAsync(ct).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        var logger = @event.Services.GetRequiredService<ResourceLoggerService>()
+                            .GetLogger(resource);
+
+                        logger.LogError(ex, "An error occurred while initializing the Couchbase cluster.");
+                        throw;
+                    }
+                }, ct);
+
+                return Task.CompletedTask;
             });
-
-        if (builder.ExecutionContext.IsRunMode)
-        {
-            AddClusterInitializer(clusterBuilder);
-        }
-
-        return clusterBuilder;
     }
 
     public static IResourceBuilder<CouchbaseClusterResource> WithSettings(this IResourceBuilder<CouchbaseClusterResource> builder, Action<CouchbaseClusterSettingsCallbackContext> configureSettings)
@@ -440,69 +452,6 @@ public static partial class CouchbaseClusterBuilderExtensions
         }
 
         return builder;
-    }
-
-    private static void AddClusterInitializer(IResourceBuilder<CouchbaseClusterResource> cluster)
-    {
-        var initializerResource = new CouchbaseClusterInitializerResource(
-            $"{cluster.Resource.Name}-init", cluster.Resource);
-
-        cluster.WithAnnotation(new CouchbaseClusterInitializerAnnotation() { Initializer = initializerResource });
-
-        var builder = cluster.ApplicationBuilder.AddResource(initializerResource)
-            .WithInitialState(new()
-            {
-                ResourceType = "CouchbaseClusterInitializer",
-                CreationTimeStamp = DateTime.UtcNow,
-                State = KnownResourceStates.Waiting,
-                Properties =
-                [
-                    new(CustomResourceKnownProperties.Source, "Couchbase")
-                ]
-            })
-            .WithParentRelationship(cluster)
-            .ExcludeFromManifest();
-
-        var httpClientName = $"{initializerResource.Name}-client";
-        cluster.ApplicationBuilder.Services.AddHttpClient(httpClientName)
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                SslOptions =
-                {
-                    // Trust the CA certificate, applicable
-                    RemoteCertificateValidationCallback =
-                        cluster.Resource.GetClusterCertificationAuthority() is { TrustCertificate: true } annotation
-                            ? annotation.CreateValidationCallback()
-                            : null
-                }
-            })
-            .RemoveAllLoggers();
-
-        cluster.ApplicationBuilder.Services.TryAddTransient<ICouchbaseClusterInitializerFactory, CouchbaseClusterInitializerFactory>();
-
-        cluster.ApplicationBuilder.Eventing.Subscribe<InitializeResourceEvent>(initializerResource, (@event, ct) =>
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var initializer = @event.Services.GetRequiredService<ICouchbaseClusterInitializerFactory>()
-                        .Create(initializerResource, httpClientName);
-
-                    await initializer.InitializeAsync(ct).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    var logger = @event.Services.GetRequiredService<ResourceLoggerService>()
-                        .GetLogger(initializerResource);
-
-                    logger.LogError(ex, "An error occurred while initializing the Couchbase cluster.");
-                    throw;
-                }
-            }, ct);
-
-            return Task.CompletedTask;
-        });
     }
 
     [DoesNotReturn]
