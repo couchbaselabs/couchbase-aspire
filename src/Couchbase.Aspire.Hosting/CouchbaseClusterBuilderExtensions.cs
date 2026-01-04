@@ -59,17 +59,6 @@ public static partial class CouchbaseClusterBuilderExtensions
             }
         });
 
-        builder.Eventing.Subscribe<ResourceEndpointsAllocatedEvent>(cluster, static async (@event, ct) =>
-        {
-            var rns = @event.Services.GetRequiredService<ResourceNotificationService>();
-
-            await rns.PublishUpdateAsync(@event.Resource, s => s with
-            {
-                // Mark the URLs as active now that endpoints are allocated
-                Urls = [.. s.Urls.Select(p => p with { IsInactive = false })],
-            }).ConfigureAwait(false);
-        });
-
         var httpClientName = $"{name}-client";
         builder.Services.AddHttpClient(httpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
@@ -111,7 +100,6 @@ public static partial class CouchbaseClusterBuilderExtensions
                 },
                 name: healthCheckKey);
 
-        int urlAdded = 0;
         return builder.AddResource(cluster)
             .WithInitialState(new()
             {
@@ -127,14 +115,36 @@ public static partial class CouchbaseClusterBuilderExtensions
             .WithHealthCheck(healthCheckKey)
             .WithUrls(context =>
             {
-                if (context.ExecutionContext.IsRunMode && Interlocked.Exchange(ref urlAdded, 1) == 0)
+                // The primary server and the management endpoint for that server change as the application model
+                // is being built, so defer adding the web console URL until this callback is invoked.
+                var endpoint = cluster.GetPrimaryServer()?.GetManagementEndpoint();
+                if (endpoint is not null)
                 {
+                    const string displayText = "Web Console";
+
                     context.Urls.Add(new ResourceUrlAnnotation
                     {
                         Url = "/",
-                        DisplayText = "Web Console",
-                        Endpoint = cluster.GetPrimaryServer()?.GetManagementEndpoint()
+                        DisplayText = displayText,
+                        Endpoint = endpoint,
                     });
+
+                    // Since the cluster is a custom Aspire resource, the URL will be marked as inactive when initially
+                    // added and is hidden in the UI. Once the management endpoint is active, mark the URL as active.
+                    var rns = context.ExecutionContext.ServiceProvider.GetRequiredService<ResourceNotificationService>();
+                    _ = Task.Run(async () =>
+                    {
+                        await rns.WaitForResourceAsync(endpoint.Resource.Name, KnownResourceStates.Running, context.CancellationToken)
+                            .ConfigureAwait(false);
+
+                        await rns.PublishUpdateAsync(cluster, s => s with
+                        {
+                            Urls = [.. s.Urls.Select(p =>
+                                p.Name is CouchbaseEndpointNames.Management or CouchbaseEndpointNames.ManagementSecure
+                                    ? p with { IsInactive = false }
+                                    : p)],
+                        }).ConfigureAwait(false);
+                    }, context.CancellationToken);
                 }
             })
             .OnInitializeResource((resource, @event, ct) =>
