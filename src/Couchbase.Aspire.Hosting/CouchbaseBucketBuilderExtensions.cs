@@ -1,12 +1,9 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Couchbase.Aspire.Hosting;
-using Couchbase.Aspire.Hosting.Initialization;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
 
 namespace Couchbase.Aspire.Hosting;
 
@@ -73,23 +70,6 @@ public static class CouchbaseBucketBuilderExtensions
                 bucketNameFactory: _ => bucket.BucketName,
                 name: healthCheckKey);
 
-        var httpClientName = $"{name}-initializer-client";
-        builder.ApplicationBuilder.Services.AddHttpClient(httpClientName)
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                SslOptions =
-                {
-                    // Trust the CA certificate, applicable
-                    RemoteCertificateValidationCallback =
-                        builder.Resource.GetClusterCertificationAuthority() is { TrustCertificate: true } annotation
-                            ? annotation.CreateValidationCallback()
-                            : null
-                }
-            })
-            .RemoveAllLoggers();
-
-        builder.ApplicationBuilder.Services.TryAddTransient<ICouchbaseBucketInitializerFactory, CouchbaseBucketInitializerFactory>();
-
         return builder.ApplicationBuilder
             .AddResource(bucket)
             .WithParentRelationship(builder)
@@ -105,28 +85,7 @@ public static class CouchbaseBucketBuilderExtensions
                     new(CustomResourceKnownProperties.Source, "Couchbase")
                 ]
             })
-            .OnInitializeResource((resource, @event, ct) =>
-            {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        var initializer = @event.Services.GetRequiredService<ICouchbaseBucketInitializerFactory>()
-                            .Create(resource, httpClientName);
-
-                        await initializer.InitializeAsync(ct);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        var logger = @event.Services.GetRequiredService<ResourceLoggerService>().GetLogger(resource);
-
-                        logger.LogError(ex, "An error occurred while initializing the Couchbase bucket.");
-                        throw;
-                    }
-                }, ct);
-
-                return Task.CompletedTask;
-            });
+            .WaitForStart(builder);
     }
 
     /// <summary>

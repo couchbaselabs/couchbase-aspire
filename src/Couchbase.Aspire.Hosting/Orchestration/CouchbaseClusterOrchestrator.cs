@@ -1,0 +1,543 @@
+using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Eventing;
+using Couchbase.Aspire.Hosting.Api;
+using Microsoft.Extensions.Logging;
+
+namespace Couchbase.Aspire.Hosting.Orchestration;
+
+internal sealed class CouchbaseClusterOrchestrator
+{
+    private readonly ICouchbaseApiService _apiService;
+    private readonly DistributedApplicationModel _model;
+    private readonly DistributedApplicationExecutionContext _executionContext;
+    private readonly ResourceNotificationService _resourceNotificationService;
+    private readonly ResourceLoggerService _resourceLoggerService;
+    private readonly ResourceCommandService _resourceCommandService;
+    private readonly IDistributedApplicationEventing _eventing;
+    private readonly CouchbaseOrchestratorEvents _orchestratorEvents;
+    private readonly ILogger<CouchbaseClusterOrchestrator> _logger;
+    private readonly CancellationTokenSource _shutdownCancellation = new();
+
+    private int _stopped;
+
+    public CouchbaseClusterOrchestrator(
+        ICouchbaseApiService apiService,
+        DistributedApplicationModel model,
+        DistributedApplicationExecutionContext executionContext,
+        ResourceNotificationService resourceNotificationService,
+        ResourceLoggerService resourceLoggerService,
+        ResourceCommandService resourceCommandService,
+        IDistributedApplicationEventing eventing,
+        CouchbaseOrchestratorEvents orchestratorEvents,
+        ILogger<CouchbaseClusterOrchestrator> logger)
+    {
+        _apiService = apiService;
+        _model = model;
+        _executionContext = executionContext;
+        _resourceNotificationService = resourceNotificationService;
+        _resourceLoggerService = resourceLoggerService;
+        _resourceCommandService = resourceCommandService;
+        _eventing = eventing;
+        _orchestratorEvents = orchestratorEvents;
+        _logger = logger;
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            WatchResourceEvents();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("Cancellation received during orchestrator startup.");
+            _shutdownCancellation.Cancel();
+        }
+        catch
+        {
+            _shutdownCancellation.Cancel();
+            throw;
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        if (Interlocked.CompareExchange(ref _stopped, 1, 0) != 0)
+        {
+            return; // Already stopped/stop in progress.
+        }
+
+        _shutdownCancellation.Cancel();
+    }
+
+    private void WatchResourceEvents()
+    {
+        _eventing.Subscribe<InitializeResourceEvent>(async (@event, ct) =>
+        {
+            if (@event.Resource is CouchbaseClusterResource cluster)
+            {
+                await StartResourceCoreAsync(cluster, StartClusterAsync, skipIfExplicitStartup: true, ct);
+            }
+            else if (@event.Resource is CouchbaseBucketResource bucket)
+            {
+                // Buckets don't support explicit startup, always start them once the cluster starts
+                await StartResourceCoreAsync(bucket, CreateBucketAsync, skipIfExplicitStartup: false, ct);
+            }
+        });
+
+        _orchestratorEvents.Subscribe<OnCouchbaseResourceStartingEvent>(async (@event, ct) =>
+        {
+            var beforeResourceStartedEvent = new BeforeResourceStartedEvent(@event.Resource, _executionContext.ServiceProvider);
+            await _eventing.PublishAsync(beforeResourceStartedEvent, ct).ConfigureAwait(false);
+
+            await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
+            {
+                StartTimeStamp = DateTime.UtcNow,
+                State = KnownResourceStates.Starting,
+            });
+        });
+
+        _orchestratorEvents.Subscribe<OnCouchbaseResourceStartedEvent>(async (@event, ct) =>
+        {
+            List<EnvironmentVariableSnapshot>? addEnvVars = null;
+            if (@event.Resource is CouchbaseClusterResource cluster)
+            {
+                // These are useful for logging into the console, the only way we can display them on the dashboard currently is via environment variables
+                addEnvVars = [
+                    new("CB_USERNAME", await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false), true),
+                    new("CB_PASSWORD", await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false), true)
+                ];
+            }
+
+            // Since this is a custom resource, we must publish these events manually to trigger URLs, connection strings,
+            // and health checks.
+            await _eventing.PublishAsync(new ResourceEndpointsAllocatedEvent(@event.Resource, _executionContext.ServiceProvider), ct)
+                .ConfigureAwait(false);
+            await _eventing.PublishAsync(new ConnectionStringAvailableEvent(@event.Resource, _executionContext.ServiceProvider), ct)
+                    .ConfigureAwait(false);
+
+            await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
+            {
+                State = KnownResourceStates.Running,
+                EnvironmentVariables = addEnvVars is not null
+                    ? [
+                        .. s.EnvironmentVariables.Where(p => !addEnvVars.Any(q => q.Name == p.Name)),
+                        .. addEnvVars
+                    ]
+                    : s.EnvironmentVariables,
+                Urls = [.. s.Urls.Select(p =>
+                    p.Name is CouchbaseEndpointNames.Management or CouchbaseEndpointNames.ManagementSecure
+                        ? p with { IsInactive = false }
+                        : p)],
+            });
+        });
+
+        _orchestratorEvents.Subscribe<OnCouchbaseResourceStoppingEvent>(async (@event, ct) =>
+        {
+            await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
+            {
+                State = KnownResourceStates.Stopping,
+                Urls = [],
+            });
+        });
+
+        _orchestratorEvents.Subscribe<OnCouchbaseResourceStoppedEvent>(async (@event, ct) =>
+        {
+            await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
+            {
+                StopTimeStamp = DateTime.UtcNow,
+                State = KnownResourceStates.NotStarted,
+            });
+        });
+    }
+
+    private async Task StartResourceCoreAsync<T>(T resource, Func<T, ILogger, CancellationToken, Task> callback, bool skipIfExplicitStartup, CancellationToken cancellationToken)
+        where T : ICouchbaseCustomResource
+    {
+        var resourceLogger = _resourceLoggerService.GetLogger(resource);
+
+        if (_resourceNotificationService.TryGetCurrentState(resource.Name, out var resourceEvent))
+        {
+            if (resourceEvent.Snapshot.State?.Text == KnownResourceStates.Running ||
+                resourceEvent.Snapshot.State?.Text == KnownResourceStates.Starting)
+            {
+                // Already started or starting
+                resourceLogger.LogWarning("Couchbase resource '{ResourceName}' is already in state '{ResourceState}'.", resource.Name, resourceEvent.Snapshot.State);
+                return;
+            }
+        }
+
+        if (skipIfExplicitStartup)
+        {
+            var explicitStartup = resource.TryGetAnnotationsOfType<ExplicitStartupAnnotation>(out _) is true;
+            if (explicitStartup)
+            {
+                // Don't startup automatically if explicit startup is requested
+                return;
+            }
+        }
+
+        await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStartingEvent(resource), cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await callback(resource, resourceLogger, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            resourceLogger.LogError(ex, "Failed to start Couchbase resource '{ResourceName}'.", resource.Name);
+        }
+    }
+
+    public async Task StartResourceAsync(ICouchbaseCustomResource resource, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        switch (resource)
+        {
+            case CouchbaseClusterResource cluster:
+                await StartResourceCoreAsync(cluster, StartClusterAsync, skipIfExplicitStartup: false, cancellationToken).ConfigureAwait(false);
+                break;
+            default:
+                throw new ArgumentException("Unsupported resource type.", nameof(resource));
+        }
+    }
+
+    private async Task StopResourceCoreAsync<T>(T resource, Func<T, ILogger, CancellationToken, Task> callback, CancellationToken cancellationToken)
+        where T : ICouchbaseCustomResource
+    {
+        var resourceLogger = _resourceLoggerService.GetLogger(resource);
+
+        if (_resourceNotificationService.TryGetCurrentState(resource.Name, out var resourceEvent))
+        {
+            if (KnownResourceStates.TerminalStates.Contains(resourceEvent.Snapshot.State?.Text) ||
+                resourceEvent.Snapshot.State == KnownResourceStates.Stopping)
+            {
+                // Already stopped or stopping
+                resourceLogger.LogWarning("Couchbase resource '{ResourceName}' is already in state '{ResourceState}'.", resource.Name, resourceEvent.Snapshot.State);
+                return;
+            }
+        }
+
+        await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStoppingEvent(resource), cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await callback(resource, resourceLogger, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            resourceLogger.LogError(ex, "Failed to stop Couchbase resource '{ResourceName}'.", resource.Name);
+        }
+    }
+
+    public async Task StopResourceAsync(ICouchbaseCustomResource resource, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        switch (resource)
+        {
+            case CouchbaseClusterResource cluster:
+                await StopResourceCoreAsync(cluster, StopClusterAsync, cancellationToken).ConfigureAwait(false);
+                break;
+            default:
+                throw new ArgumentException("Unsupported resource type.", nameof(resource));
+        }
+    }
+
+    private Task StartClusterAsync(CouchbaseClusterResource cluster, ILogger resourceLogger, CancellationToken cancellationToken)
+    {
+        // Run the intialization process as a background task
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var primaryServer = cluster.GetPrimaryServer();
+                if (primaryServer is null)
+                {
+                    throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");
+                }
+
+                // Start all servers in the cluster
+                await Task.WhenAll(cluster.Servers.Select(p =>
+                    _resourceCommandService.ExecuteCommandAsync(p, KnownResourceCommands.StartCommand, cancellationToken))
+                ).ConfigureAwait(false);
+
+                // Wait for the initial node before we consider the init to be running
+                resourceLogger.LogInformation("Waiting for resource {ResourceName} to be running...", primaryServer.Name);
+                await _resourceNotificationService.WaitForResourceAsync(primaryServer.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
+
+                var api = _apiService.GetApi(cluster);
+
+                // Initialize the cluster on the primary node
+                await InitializeClusterAsync(api, primaryServer, cancellationToken).ConfigureAwait(false);
+
+                // Set primary node alternate addresses
+                await SetNodeAlternateAddresses(api, primaryServer, cancellationToken).ConfigureAwait(false);
+
+                // Get existing cluster nodes
+                var pool = await api.GetClusterNodesAsync(primaryServer, cancellationToken).ConfigureAwait(false);
+                var existingNodes = pool.Nodes.Select(p => p.Hostname).ToList();
+
+                // Initialize additional nodes in parallel
+                List<Task<bool>> additionalNodeTasks = [];
+                foreach (var server in cluster.Servers)
+                {
+                    if (server != primaryServer)
+                    {
+                        additionalNodeTasks.Add(AddNodeAsync(api, primaryServer, server, existingNodes, cancellationToken));
+                    }
+                }
+
+                // If there are additional nodes, perform a rebalance to activate them
+                if (additionalNodeTasks.Count > 0)
+                {
+                    await Task.WhenAll(additionalNodeTasks);
+
+                    if (additionalNodeTasks.Any(p => p.Result == true))
+                    {
+                        // Nodes were added
+                        await RebalanceAsync(api, primaryServer, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
+                await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStartedEvent(cluster), cancellationToken).ConfigureAwait(false);
+
+                resourceLogger.LogInformation("Initialized cluster '{ClusterName}'.", cluster.Name);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Ignore
+            }
+            catch (Exception ex)
+            {
+                resourceLogger.LogError(ex, "Failed to initialize Couchbase cluster '{ClusterName}'.", cluster.Name);
+
+                // Indicate the cluster failed to start
+                await _resourceNotificationService.PublishUpdateAsync(cluster, s => s with
+                {
+                    State = KnownResourceStates.FailedToStart,
+                    ExitCode = 1
+                });
+            }
+        }, cancellationToken);
+
+        return Task.CompletedTask;
+    }
+
+    private Task StopClusterAsync(CouchbaseClusterResource cluster, ILogger resourceLogger, CancellationToken cancellationToken)
+    {
+        _ =  Task.Run(async () =>
+        {
+            try
+            {
+                // Stop all servers in the cluster
+                await Task.WhenAll(cluster.Servers.Select(async p =>
+                {
+                    await _resourceCommandService.ExecuteCommandAsync(p, KnownResourceCommands.StopCommand, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    await _resourceNotificationService.WaitForResourceAsync(p.Name, KnownResourceStates.TerminalStates, cancellationToken)
+                        .ConfigureAwait(false);
+                })).ConfigureAwait(false);
+
+                await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStoppedEvent(cluster), cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Ignore
+                return;
+            }
+            catch (Exception ex)
+            {
+                resourceLogger.LogWarning(ex, "Error stopping Couchbase cluster '{ClusterName}'.", cluster.Name);
+                return;
+            }
+        }, cancellationToken);
+
+        return Task.CompletedTask;
+    }
+
+    public async Task InitializeClusterAsync(ICouchbaseApi api, CouchbaseServerResource primaryServer, CancellationToken cancellationToken = default)
+    {
+        var poolExists = await api.GetDefaultPoolAsync(primaryServer, preferInsecure: true, cancellationToken);
+        if (poolExists)
+        {
+            // Cluster is already initialized
+            return;
+        }
+
+        // Load certificates before any other operations
+        await LoadNodeCertificatesAsync(api, primaryServer, cancellationToken).ConfigureAwait(false);
+
+        var resourceLogger = _resourceLoggerService.GetLogger(primaryServer.Cluster);
+        resourceLogger.LogInformation("Initializing cluster '{ClusterName}' on node '{NodeName}'...", primaryServer.Cluster.Name, primaryServer.Name);
+
+        var settings = await primaryServer.Cluster.GetClusterSettingsAsync(_executionContext, cancellationToken).ConfigureAwait(false);
+
+        await api.InitializeClusterAsync(primaryServer, settings, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <returns><c>true</c> if the node was added, <c>false</c> if it is already part of the cluster.</returns>
+    private async Task<bool> AddNodeAsync(ICouchbaseApi api, CouchbaseServerResource primaryServer, CouchbaseServerResource addServer,
+        List<string> existingNodes, CancellationToken cancellationToken)
+    {
+        var resourceLogger = _resourceLoggerService.GetLogger(primaryServer.Cluster);
+        resourceLogger.LogInformation("Waiting for resource {ResourceName} to be running...", addServer.Name);
+
+        await _resourceNotificationService.WaitForResourceAsync(addServer.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
+
+        var added = false;
+        if (!existingNodes.Contains($"{addServer.NodeName}:8091"))
+        {
+            // If the node isn't fully started, the request to add the node may fail, so wait for a 404 from /pools/default
+            await api.GetDefaultPoolAsync(addServer, preferInsecure: true, cancellationToken).ConfigureAwait(false);
+
+            // Load certificates on the node first
+            await LoadNodeCertificatesAsync(api, addServer, cancellationToken).ConfigureAwait(false);
+
+            resourceLogger.LogInformation("Adding node {NodeName} to cluster '{ClusterName}'...", addServer.Name, primaryServer.Cluster.Name);
+
+            await api.AddNodeAsync(primaryServer, addServer.NodeName, addServer.Services, cancellationToken).ConfigureAwait(false);
+
+            added = true;
+        }
+
+        await SetNodeAlternateAddresses(api, addServer, cancellationToken).ConfigureAwait(false);
+
+        return added;
+    }
+
+    private async Task SetNodeAlternateAddresses(ICouchbaseApi api, CouchbaseServerResource server, CancellationToken cancellationToken)
+    {
+        var resourceLogger = _resourceLoggerService.GetLogger(server.Cluster);
+        resourceLogger.LogInformation("Setting node {NodeName} alternate addresses...", server.Name);
+
+        var hostname = await server.Host.GetValueAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!server.TryGetEndpoints(out var endpoints))
+        {
+            throw new InvalidOperationException("Failed to get node endpoints.");
+        }
+
+        var ports = new Dictionary<string, string>();
+        foreach (var endpoint in endpoints)
+        {
+            if (CouchbaseEndpointNames.EndpointNameServiceMappings.TryGetValue(endpoint.Name, out var serviceName))
+            {
+                var port = await new EndpointReference(server, endpoint).Property(EndpointProperty.Port)
+                    .GetValueAsync(cancellationToken).ConfigureAwait(false);
+                if (port is not null)
+                {
+                    ports.Add(serviceName, port);
+                }
+            }
+        }
+
+        await api.SetupAlternateAddressesAsync(server, hostname!, ports, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task LoadNodeCertificatesAsync(ICouchbaseApi api, CouchbaseServerResource server, CancellationToken cancellationToken)
+    {
+        if (!server.Cluster.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>())
+        {
+            // No certificates to load
+            return;
+        }
+
+        var resourceLogger = _resourceLoggerService.GetLogger(server.Cluster);
+        resourceLogger.LogInformation("Loading node {NodeName} certificates...", server.Name);
+
+        await api.LoadTrustedCAsAsync(server, cancellationToken).ConfigureAwait(false);
+        await api.ReloadCertificateAsync(server, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task RebalanceAsync(ICouchbaseApi api, CouchbaseServerResource server, CancellationToken cancellationToken)
+    {
+        var resourceLogger = _resourceLoggerService.GetLogger(server.Cluster);
+        resourceLogger.LogInformation("Rebalancing cluster '{ClusterName}'...", server.Cluster.Name);
+
+        var knownNodes = server.Cluster.Servers.Select(p => p.NodeName).ToList();
+
+        await api.RebalanceAsync(server, knownNodes, cancellationToken).ConfigureAwait(false);
+
+        // Wait for the rebalance to complete
+        RebalanceStatus? status;
+        do
+        {
+            status = await api.GetRebalanceProgressAsync(server, cancellationToken).ConfigureAwait(false);
+            if (status.Status == RebalanceStatus.StatusNone)
+            {
+                break;
+            }
+
+            await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+        } while (true);
+
+        resourceLogger.LogInformation("Rebalance complete for cluster '{ClusterName}'.", server.Cluster.Name);
+    }
+
+    private Task CreateBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken)
+    {
+        // Run the intialization process as a background task
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Wait for the cluster to start
+                await _resourceNotificationService.WaitForResourceAsync(bucket.Parent.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
+
+                // Mark the bucket as starting
+                await _resourceNotificationService.PublishUpdateAsync(bucket, s => s with
+                {
+                    StartTimeStamp = DateTime.UtcNow,
+                    State = KnownResourceStates.Starting,
+                });
+
+                await InitializeBucketAsync(bucket, resourceLogger, cancellationToken).ConfigureAwait(false);
+
+                await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStartedEvent(bucket), cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Ignore
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initialize Couchbase bucket '{BucketName}'.", bucket.BucketName);
+
+                await _resourceNotificationService.PublishUpdateAsync(bucket, s => s with
+                {
+                    State = KnownResourceStates.Exited,
+                    ExitCode = 1
+                });
+            }
+        }, cancellationToken);
+
+        return Task.CompletedTask;
+    }
+
+    public async Task InitializeBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken = default)
+    {
+        var node = bucket.Parent.GetPrimaryServer();
+        if (node is null)
+        {
+            throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");
+        }
+
+        resourceLogger.LogInformation("Creating bucket '{BucketName}'...", bucket.BucketName);
+
+        var api = _apiService.GetApi(bucket.Parent);
+
+        var bucketExists = await api.GetBucketAsync(node, bucket.BucketName, cancellationToken).ConfigureAwait(false);
+        if (bucketExists)
+        {
+            resourceLogger.LogInformation("Bucket '{BucketName}' already exists.", bucket.BucketName);
+            return;
+        }
+
+        var settings = await bucket.GetBucketSettingsAsync(_executionContext, cancellationToken).ConfigureAwait(false);
+        await api.CreateBucketAsync(node, bucket.BucketName, settings, cancellationToken).ConfigureAwait(false);
+
+        resourceLogger.LogInformation("Created bucket '{BucketName}'.", bucket.BucketName);
+    }
+}

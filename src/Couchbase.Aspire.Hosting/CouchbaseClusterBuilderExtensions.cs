@@ -4,10 +4,11 @@ using System.Text.RegularExpressions;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Couchbase.Aspire.Hosting;
-using Couchbase.Aspire.Hosting.Initialization;
+using Couchbase.Aspire.Hosting.Api;
+using Couchbase.Aspire.Hosting.Orchestration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 
 namespace Couchbase.Aspire.Hosting;
 
@@ -40,8 +41,20 @@ public static partial class CouchbaseClusterBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        builder.Services.TryAddSingleton<CouchbaseNodeCertificateProvider>();
-        builder.Services.TryAddTransient<ICouchbaseClusterInitializerFactory, CouchbaseClusterInitializerFactory>();
+        if (builder.ExecutionContext.IsRunMode)
+        {
+            builder.Services.TryAddSingleton<CouchbaseNodeCertificateProvider>();
+            builder.Services.TryAddSingleton<CouchbaseClusterOrchestrator>();
+            builder.Services.TryAddSingleton<ICouchbaseApiService, CouchbaseApiService>();
+            builder.Services.TryAddSingleton<CouchbaseOrchestratorEvents>();
+
+            if (!builder.Services.Any(p => p.ImplementationType == typeof(CouchbaseOrchestratorService)))
+            {
+                // Our orchestrator must be registered before the built-in Aspire orchestrators, otherwise it won't
+                // execute until after all resources are started.
+                builder.Services.Insert(0, ServiceDescriptor.Singleton<IHostedService, CouchbaseOrchestratorService>());
+            }
+        }
 
         // don't use special characters in the password, since it goes into a URI
         var passwordParameter = password?.Resource ?? ParameterResourceBuilderExtensions.CreateDefaultPasswordParameter(builder, $"{name}-password", special: false);
@@ -59,20 +72,7 @@ public static partial class CouchbaseClusterBuilderExtensions
             }
         });
 
-        var httpClientName = $"{name}-client";
-        builder.Services.AddHttpClient(httpClientName)
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                SslOptions =
-                {
-                    // Trust the CA certificate, applicable
-                    RemoteCertificateValidationCallback =
-                        cluster.GetClusterCertificationAuthority() is { TrustCertificate: true } annotation
-                            ? annotation.CreateValidationCallback()
-                            : null
-                }
-            })
-            .RemoveAllLoggers();
+        CouchbaseApiService.AddHttpClient(builder.Services, cluster);
 
         var healthCheckKey = $"{name}_check";
         builder.Services.AddHealthChecks()
@@ -105,7 +105,7 @@ public static partial class CouchbaseClusterBuilderExtensions
             {
                 ResourceType = "CouchbaseCluster",
                 CreationTimeStamp = DateTime.UtcNow,
-                State = KnownResourceStates.Waiting,
+                State = KnownResourceStates.NotStarted,
                 Properties =
                 [
                     new(CustomResourceKnownProperties.Source, "Couchbase"),
@@ -115,60 +115,84 @@ public static partial class CouchbaseClusterBuilderExtensions
             .WithHealthCheck(healthCheckKey)
             .WithUrls(context =>
             {
+                const string displayText = "Web Console";
+                if (context.Urls.Any(p => p.DisplayText == displayText))
+                {
+                    // Don't add again on restart
+                    return;
+                }
+
                 // The primary server and the management endpoint for that server change as the application model
                 // is being built, so defer adding the web console URL until this callback is invoked.
                 var endpoint = cluster.GetPrimaryServer()?.GetManagementEndpoint();
                 if (endpoint is not null)
                 {
-                    const string displayText = "Web Console";
-
                     context.Urls.Add(new ResourceUrlAnnotation
                     {
                         Url = "/",
                         DisplayText = displayText,
                         Endpoint = endpoint,
                     });
-
-                    // Since the cluster is a custom Aspire resource, the URL will be marked as inactive when initially
-                    // added and is hidden in the UI. Once the management endpoint is active, mark the URL as active.
-                    var rns = context.ExecutionContext.ServiceProvider.GetRequiredService<ResourceNotificationService>();
-                    _ = Task.Run(async () =>
-                    {
-                        await rns.WaitForResourceAsync(endpoint.Resource.Name, KnownResourceStates.Running, context.CancellationToken)
-                            .ConfigureAwait(false);
-
-                        await rns.PublishUpdateAsync(cluster, s => s with
-                        {
-                            Urls = [.. s.Urls.Select(p =>
-                                p.Name is CouchbaseEndpointNames.Management or CouchbaseEndpointNames.ManagementSecure
-                                    ? p with { IsInactive = false }
-                                    : p)],
-                        }).ConfigureAwait(false);
-                    }, context.CancellationToken);
                 }
             })
-            .OnInitializeResource((resource, @event, ct) =>
+            .WithCommand(KnownResourceCommands.StartCommand, "Start", async (context) =>
             {
-                _ = Task.Run(async () =>
+                var orchestrator = context.ServiceProvider.GetRequiredService<CouchbaseClusterOrchestrator>();
+
+                await orchestrator.StartResourceAsync(cluster, context.CancellationToken).ConfigureAwait(false);
+
+                return CommandResults.Success();
+            }, new CommandOptions
+            {
+                UpdateState = context =>
                 {
-                    try
+                    var state = context.ResourceSnapshot.State?.Text;
+                    if (state == KnownResourceStates.Starting || state == KnownResourceStates.RuntimeUnhealthy || string.IsNullOrEmpty(state))
                     {
-                        var initializer = @event.Services.GetRequiredService<ICouchbaseClusterInitializerFactory>()
-                            .Create(resource, httpClientName);
-
-                        await initializer.InitializeAsync(ct).ConfigureAwait(false);
+                        return ResourceCommandState.Disabled;
                     }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    else if (KnownResourceStates.TerminalStates.Contains(state) || state == KnownResourceStates.NotStarted ||
+                        state == KnownResourceStates.Waiting || state == "Unknown")
                     {
-                        var logger = @event.Services.GetRequiredService<ResourceLoggerService>()
-                            .GetLogger(resource);
-
-                        logger.LogError(ex, "An error occurred while initializing the Couchbase cluster.");
-                        throw;
+                        return ResourceCommandState.Enabled;
                     }
-                }, ct);
+                    else
+                    {
+                        return ResourceCommandState.Hidden;
+                    }
+                },
+                IconName = "Play",
+                IconVariant = IconVariant.Filled,
+                IsHighlighted = true
+            })
+            .WithCommand(KnownResourceCommands.StopCommand, "Stop", async (context) =>
+            {
+                var orchestrator = context.ServiceProvider.GetRequiredService<CouchbaseClusterOrchestrator>();
 
-                return Task.CompletedTask;
+                await orchestrator.StopResourceAsync(cluster, context.CancellationToken).ConfigureAwait(false);
+
+                return CommandResults.Success();
+            }, new CommandOptions
+            {
+                UpdateState = context =>
+                {
+                    var state = context.ResourceSnapshot.State?.Text;
+                    if (state == KnownResourceStates.Stopping)
+                    {
+                        return ResourceCommandState.Disabled;
+                    }
+                    else if (state == KnownResourceStates.Running)
+                    {
+                        return ResourceCommandState.Enabled;
+                    }
+                    else
+                    {
+                        return ResourceCommandState.Hidden;
+                    }
+                },
+                IconName = "Stop",
+                IconVariant = IconVariant.Filled,
+                IsHighlighted = true,
             });
     }
 

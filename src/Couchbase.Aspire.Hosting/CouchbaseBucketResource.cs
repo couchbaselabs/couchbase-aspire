@@ -12,7 +12,7 @@ namespace Couchbase.Aspire.Hosting;
 /// <param name="bucketName">The name of the Couchbase bucket represented by this resource.</param>
 /// <param name="parent">The parent Couchbase cluster resource that hosts this bucket.</param>
 public class CouchbaseBucketResource(string name, string bucketName, CouchbaseClusterResource parent)
-    : Resource(name), IResourceWithWaitSupport
+    : Resource(name), IResourceWithWaitSupport, ICouchbaseCustomResource
 {
     /// <summary>
     /// Gets the parent Couchbase Server container resource.

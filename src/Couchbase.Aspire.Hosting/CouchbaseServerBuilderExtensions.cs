@@ -1,6 +1,7 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
-using Couchbase.Aspire.Hosting.Initialization;
+using Couchbase.Aspire.Hosting;
+using Couchbase.Aspire.Hosting.Orchestration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Couchbase.Aspire.Hosting;
@@ -59,6 +60,7 @@ internal static class CouchbaseServerBuilderExtensions
                 }
             })
             .WithNodeCertificate()
+            .WithExplicitStart()
             .ExcludeFromManifest();
 
         // Add ports for insecure services only, secure services are added dynamically based on the

@@ -2,7 +2,7 @@ using Aspire.Hosting.ApplicationModel;
 
 namespace Couchbase.Aspire.Hosting;
 
-public class CouchbaseClusterResource : Resource, IResourceWithConnectionString, IResourceWithWaitSupport
+public class CouchbaseClusterResource : Resource, IResourceWithConnectionString, IResourceWithWaitSupport, ICouchbaseCustomResource
 {
     private const string DefaultUserName = "Administrator";
 

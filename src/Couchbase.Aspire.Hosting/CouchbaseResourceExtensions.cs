@@ -1,6 +1,5 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
-using Couchbase.Aspire.Hosting.Initialization;
 
 namespace Couchbase.Aspire.Hosting;
 

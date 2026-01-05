@@ -3,7 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using Aspire.Hosting.ApplicationModel;
 using Microsoft.Extensions.Logging;
 
-namespace Couchbase.Aspire.Hosting.Initialization;
+namespace Couchbase.Aspire.Hosting.Orchestration;
 
 /// <summary>
 /// Manages node certificates when using a custom certification authority.
