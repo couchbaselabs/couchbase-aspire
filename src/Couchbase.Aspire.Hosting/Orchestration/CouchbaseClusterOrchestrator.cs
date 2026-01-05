@@ -79,11 +79,6 @@ internal sealed class CouchbaseClusterOrchestrator
             {
                 await StartResourceCoreAsync(cluster, StartClusterAsync, skipIfExplicitStartup: true, ct);
             }
-            else if (@event.Resource is CouchbaseBucketResource bucket)
-            {
-                // Buckets don't support explicit startup, always start them once the cluster starts
-                await StartResourceCoreAsync(bucket, CreateBucketAsync, skipIfExplicitStartup: false, ct);
-            }
         });
 
         _orchestratorEvents.Subscribe<OnCouchbaseResourceStartingEvent>(async (@event, ct) =>
@@ -96,6 +91,30 @@ internal sealed class CouchbaseClusterOrchestrator
                 StartTimeStamp = DateTime.UtcNow,
                 State = KnownResourceStates.Starting,
             });
+
+            if (@event.Resource is CouchbaseClusterResource cluster)
+            {
+                // Start the buckets in the cluster. Run in the background to avoid blocking the cluster start.
+                foreach (var bucket in cluster.Buckets.Values)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await StartResourceAsync(bucket, ct).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                        {
+                            // Ignore
+                        }
+                        catch (Exception ex)
+                        {
+                            var resourceLogger = _resourceLoggerService.GetLogger(bucket);
+                            resourceLogger.LogError(ex, "Failed to start Couchbase bucket '{BucketName}'.", bucket.BucketName);
+                        }
+                    }, ct);
+                }
+            }
         });
 
         _orchestratorEvents.Subscribe<OnCouchbaseResourceStartedEvent>(async (@event, ct) =>
@@ -140,6 +159,13 @@ internal sealed class CouchbaseClusterOrchestrator
                 State = KnownResourceStates.Stopping,
                 Urls = [],
             });
+
+            if (@event.Resource is CouchbaseClusterResource cluster)
+            {
+                // Stop the buckets in the cluster
+                await Task.WhenAll(cluster.Buckets.Values.Select(bucket =>
+                    StopResourceAsync(bucket, ct))).ConfigureAwait(false);
+            }
         });
 
         _orchestratorEvents.Subscribe<OnCouchbaseResourceStoppedEvent>(async (@event, ct) =>
@@ -147,7 +173,7 @@ internal sealed class CouchbaseClusterOrchestrator
             await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
             {
                 StopTimeStamp = DateTime.UtcNow,
-                State = KnownResourceStates.NotStarted,
+                State = KnownResourceStates.Exited,
             });
         });
     }
@@ -178,6 +204,7 @@ internal sealed class CouchbaseClusterOrchestrator
             }
         }
 
+        // Note: This event publish is blocking if there are dependencies, and this resource enters a waiting state
         await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStartingEvent(resource), cancellationToken).ConfigureAwait(false);
         try
         {
@@ -197,6 +224,9 @@ internal sealed class CouchbaseClusterOrchestrator
         {
             case CouchbaseClusterResource cluster:
                 await StartResourceCoreAsync(cluster, StartClusterAsync, skipIfExplicitStartup: false, cancellationToken).ConfigureAwait(false);
+                break;
+            case CouchbaseBucketResource bucket:
+                await StartResourceCoreAsync(bucket, CreateBucketAsync, skipIfExplicitStartup: false, cancellationToken).ConfigureAwait(false);
                 break;
             default:
                 throw new ArgumentException("Unsupported resource type.", nameof(resource));
@@ -238,6 +268,9 @@ internal sealed class CouchbaseClusterOrchestrator
         {
             case CouchbaseClusterResource cluster:
                 await StopResourceCoreAsync(cluster, StopClusterAsync, cancellationToken).ConfigureAwait(false);
+                break;
+            case CouchbaseBucketResource bucket:
+                await StopResourceCoreAsync(bucket, StopBucketAsync, cancellationToken).ConfigureAwait(false);
                 break;
             default:
                 throw new ArgumentException("Unsupported resource type.", nameof(resource));
@@ -483,17 +516,35 @@ internal sealed class CouchbaseClusterOrchestrator
         {
             try
             {
-                // Wait for the cluster to start
-                await _resourceNotificationService.WaitForResourceAsync(bucket.Parent.Name, KnownResourceStates.Running, cancellationToken).ConfigureAwait(false);
+                using var createBucketCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-                // Mark the bucket as starting
-                await _resourceNotificationService.PublishUpdateAsync(bucket, s => s with
+                // Observe the bucket state in the background, stopping the creation if it enters a terminal state
+                _ = Task.Run(async () =>
                 {
-                    StartTimeStamp = DateTime.UtcNow,
-                    State = KnownResourceStates.Starting,
-                });
+                    try
+                    {
+                        var state = await _resourceNotificationService.WaitForResourceAsync(bucket.Name,
+                            KnownResourceStates.TerminalStates.Concat([KnownResourceStates.Stopping, KnownResourceStates.Running]),
+                            cancellationToken).ConfigureAwait(false);
 
-                await InitializeBucketAsync(bucket, resourceLogger, cancellationToken).ConfigureAwait(false);
+                        if (state != KnownResourceStates.Running)
+                        {
+                            // Bucket entered a terminal state before creation could complete, cancel the creation
+                            createBucketCancellation.Cancel();
+                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        // Ignore
+                    }
+                    catch (Exception ex)
+                    {
+                        resourceLogger.LogError(ex, "Error observing Couchbase bucket '{BucketName}' state.", bucket.BucketName);
+                        createBucketCancellation.Cancel();
+                    }
+                }, cancellationToken);
+
+                await InitializeBucketAsync(bucket, resourceLogger, createBucketCancellation.Token).ConfigureAwait(false);
 
                 await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStartedEvent(bucket), cancellationToken).ConfigureAwait(false);
             }
@@ -514,6 +565,12 @@ internal sealed class CouchbaseClusterOrchestrator
         }, cancellationToken);
 
         return Task.CompletedTask;
+    }
+
+    private async Task StopBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken)
+    {
+        // The bucket is effectively stopped by the cluster stopping, so simply mark the bucket resource as stopped.
+        await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStoppedEvent(bucket), cancellationToken).ConfigureAwait(false);
     }
 
     public async Task InitializeBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken = default)
