@@ -86,11 +86,11 @@ internal sealed class CouchbaseClusterOrchestrator
             var beforeResourceStartedEvent = new BeforeResourceStartedEvent(@event.Resource, _executionContext.ServiceProvider);
             await _eventing.PublishAsync(beforeResourceStartedEvent, ct).ConfigureAwait(false);
 
-            await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
+            await PublishUpdateToHierarchyAsync(@event.Resource, (_, s) => s with
             {
                 StartTimeStamp = DateTime.UtcNow,
                 State = KnownResourceStates.Starting,
-            });
+            }).ConfigureAwait(false);
 
             if (@event.Resource is CouchbaseClusterResource cluster)
             {
@@ -134,12 +134,12 @@ internal sealed class CouchbaseClusterOrchestrator
             await _eventing.PublishAsync(new ResourceEndpointsAllocatedEvent(@event.Resource, _executionContext.ServiceProvider), ct)
                 .ConfigureAwait(false);
             await _eventing.PublishAsync(new ConnectionStringAvailableEvent(@event.Resource, _executionContext.ServiceProvider), ct)
-                    .ConfigureAwait(false);
+                .ConfigureAwait(false);
 
-            await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
+            await PublishUpdateToHierarchyAsync(@event.Resource, (r, s) => s with
             {
                 State = KnownResourceStates.Running,
-                EnvironmentVariables = addEnvVars is not null
+                EnvironmentVariables = addEnvVars is not null && r == @event.Resource
                     ? [
                         .. s.EnvironmentVariables.Where(p => !addEnvVars.Any(q => q.Name == p.Name)),
                         .. addEnvVars
@@ -149,16 +149,16 @@ internal sealed class CouchbaseClusterOrchestrator
                     p.Name is CouchbaseEndpointNames.Management or CouchbaseEndpointNames.ManagementSecure
                         ? p with { IsInactive = false }
                         : p)],
-            });
+            }).ConfigureAwait(false);
         });
 
         _orchestratorEvents.Subscribe<OnCouchbaseResourceStoppingEvent>(async (@event, ct) =>
         {
-            await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
+            await PublishUpdateToHierarchyAsync(@event.Resource, (_, s) => s with
             {
                 State = KnownResourceStates.Stopping,
                 Urls = [],
-            });
+            }).ConfigureAwait(false);
 
             if (@event.Resource is CouchbaseClusterResource cluster)
             {
@@ -170,11 +170,12 @@ internal sealed class CouchbaseClusterOrchestrator
 
         _orchestratorEvents.Subscribe<OnCouchbaseResourceStoppedEvent>(async (@event, ct) =>
         {
-            await _resourceNotificationService.PublishUpdateAsync(@event.Resource, s => s with
+            await PublishUpdateToHierarchyAsync(@event.Resource, (r, s) => s with
             {
                 StopTimeStamp = DateTime.UtcNow,
                 State = KnownResourceStates.Exited,
-            });
+                ExitCode = r == @event.Resource ? @event.ExitCode : 0,
+            }).ConfigureAwait(false);
 
             if (_resourceNotificationService.TryGetCurrentState(@event.Resource.Name, out var currentResourceEvent))
             {
@@ -368,11 +369,7 @@ internal sealed class CouchbaseClusterOrchestrator
                 resourceLogger.LogError(ex, "Failed to initialize Couchbase cluster '{ClusterName}'.", cluster.Name);
 
                 // Indicate the cluster failed to start
-                await _resourceNotificationService.PublishUpdateAsync(cluster, s => s with
-                {
-                    State = KnownResourceStates.FailedToStart,
-                    ExitCode = 1
-                });
+                await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStoppedEvent(cluster) { ExitCode = 1 }, cancellationToken).ConfigureAwait(false);
             }
         }, cancellationToken);
 
@@ -578,11 +575,7 @@ internal sealed class CouchbaseClusterOrchestrator
             {
                 _logger.LogError(ex, "Failed to initialize Couchbase bucket '{BucketName}'.", bucket.BucketName);
 
-                await _resourceNotificationService.PublishUpdateAsync(bucket, s => s with
-                {
-                    State = KnownResourceStates.Exited,
-                    ExitCode = 1
-                });
+                await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStoppedEvent(bucket) { ExitCode = 1 }, cancellationToken).ConfigureAwait(false);
             }
         }, cancellationToken);
 
@@ -595,7 +588,7 @@ internal sealed class CouchbaseClusterOrchestrator
         await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStoppedEvent(bucket), cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task InitializeBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken = default)
+    private async Task InitializeBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken = default)
     {
         var node = bucket.Parent.GetPrimaryServer();
         if (node is null)
@@ -632,5 +625,20 @@ internal sealed class CouchbaseClusterOrchestrator
         }
 
         resourceLogger.LogInformation("Created bucket '{BucketName}'.", bucket.BucketName);
+    }
+
+    private async Task PublishUpdateToHierarchyAsync(ICouchbaseCustomResource resource, Func<ICouchbaseCustomResource, CustomResourceSnapshot, CustomResourceSnapshot> updateFunc)
+    {
+        await _resourceNotificationService.PublishUpdateAsync(resource, s => updateFunc(resource, s)).ConfigureAwait(false);
+
+        var childResources = _model.Resources
+            .OfType<IResourceWithParent>()
+            .Where(p => p.Parent == resource)
+            .OfType<ICouchbaseCustomResource>();
+
+        foreach (var childResource in childResources)
+        {
+            await PublishUpdateToHierarchyAsync(childResource, updateFunc).ConfigureAwait(false);
+        }
     }
 }

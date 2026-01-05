@@ -5,7 +5,10 @@ namespace Couchbase.Aspire.Hosting.Orchestration;
 internal record OnCouchbaseResourceStartingEvent(ICouchbaseCustomResource Resource);
 internal record OnCouchbaseResourceStartedEvent(ICouchbaseCustomResource Resource);
 internal record OnCouchbaseResourceStoppingEvent(ICouchbaseCustomResource Resource);
-internal record OnCouchbaseResourceStoppedEvent(ICouchbaseCustomResource Resource);
+internal record OnCouchbaseResourceStoppedEvent(ICouchbaseCustomResource Resource)
+{
+    public int ExitCode { get; set; } = 0;
+}
 
 internal sealed class CouchbaseOrchestratorEvents
 {

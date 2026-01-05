@@ -25,13 +25,12 @@ public static class CouchbaseServerGroupBuilderExtensions
             {
                 ResourceType = "CouchbaseServerGroup",
                 CreationTimeStamp = DateTime.UtcNow,
-                State = KnownResourceStates.Active,
+                State = KnownResourceStates.NotStarted,
                 Properties =
                 [
                     new(CustomResourceKnownProperties.Source, "Couchbase")
                 ]
             })
-            .WithParentRelationship(builder)
             .WithIconName("ServerMultiple")
             .WithReplicas(1);
 
