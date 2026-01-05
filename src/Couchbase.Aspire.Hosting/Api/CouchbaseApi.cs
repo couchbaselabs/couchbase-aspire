@@ -223,7 +223,7 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
         return result!;
     }
 
-    public async Task<bool> GetBucketAsync(CouchbaseServerResource server, string bucketName, CancellationToken cancellationToken)
+    public async Task<Bucket?> GetBucketAsync(CouchbaseServerResource server, string bucketName, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentException.ThrowIfNullOrEmpty(bucketName);
@@ -236,7 +236,7 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
         if (response.StatusCode == HttpStatusCode.OK)
         {
             // Bucket exists
-            return true;
+            return await response.Content.ReadFromJsonAsync<Bucket>(cancellationToken).ConfigureAwait(false);
         }
         else if (response.StatusCode != HttpStatusCode.NotFound)
         {
@@ -244,7 +244,7 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
             await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
         }
 
-        return false;
+        return null;
     }
 
     public async Task CreateBucketAsync(CouchbaseServerResource server, string bucketName, CouchbaseBucketSettings settings,

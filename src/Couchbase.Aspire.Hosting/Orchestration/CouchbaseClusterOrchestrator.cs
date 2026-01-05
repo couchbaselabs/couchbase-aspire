@@ -607,15 +607,29 @@ internal sealed class CouchbaseClusterOrchestrator
 
         var api = _apiService.GetApi(bucket.Parent);
 
-        var bucketExists = await api.GetBucketAsync(node, bucket.BucketName, cancellationToken).ConfigureAwait(false);
-        if (bucketExists)
+        var bucketInfo = await api.GetBucketAsync(node, bucket.BucketName, cancellationToken).ConfigureAwait(false);
+        if (bucketInfo is not null)
         {
             resourceLogger.LogInformation("Bucket '{BucketName}' already exists.", bucket.BucketName);
-            return;
+        }
+        else
+        {
+            var settings = await bucket.GetBucketSettingsAsync(_executionContext, cancellationToken).ConfigureAwait(false);
+            await api.CreateBucketAsync(node, bucket.BucketName, settings, cancellationToken).ConfigureAwait(false);
         }
 
-        var settings = await bucket.GetBucketSettingsAsync(_executionContext, cancellationToken).ConfigureAwait(false);
-        await api.CreateBucketAsync(node, bucket.BucketName, settings, cancellationToken).ConfigureAwait(false);
+        // Wait for bucket to be healthy
+        resourceLogger.LogInformation("Waiting for bucket '{BucketName}' to be healthy...", bucket.BucketName);
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            bucketInfo = await api.GetBucketAsync(node, bucket.BucketName, cancellationToken).ConfigureAwait(false);
+            if (bucketInfo?.Nodes?.All(p => p.Status == BucketNode.HealthyStatus) ?? false)
+            {
+                break;
+            }
+
+            await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+        }
 
         resourceLogger.LogInformation("Created bucket '{BucketName}'.", bucket.BucketName);
     }
