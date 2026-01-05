@@ -77,7 +77,7 @@ internal sealed class CouchbaseClusterOrchestrator
         {
             if (@event.Resource is CouchbaseClusterResource cluster)
             {
-                await StartResourceCoreAsync(cluster, StartClusterAsync, skipIfExplicitStartup: true, ct);
+                await StartResourceCoreAsync(cluster, StartClusterAsync, isExplicitStart: false, ct);
             }
         });
 
@@ -175,10 +175,15 @@ internal sealed class CouchbaseClusterOrchestrator
                 StopTimeStamp = DateTime.UtcNow,
                 State = KnownResourceStates.Exited,
             });
+
+            if (_resourceNotificationService.TryGetCurrentState(@event.Resource.Name, out var currentResourceEvent))
+            {
+                await _eventing.PublishAsync(new ResourceStoppedEvent(@event.Resource, _executionContext.ServiceProvider, currentResourceEvent), ct).ConfigureAwait(false);
+            }
         });
     }
 
-    private async Task StartResourceCoreAsync<T>(T resource, Func<T, ILogger, CancellationToken, Task> callback, bool skipIfExplicitStartup, CancellationToken cancellationToken)
+    private async Task StartResourceCoreAsync<T>(T resource, Func<T, ILogger, bool, CancellationToken, Task> callback, bool isExplicitStart, CancellationToken cancellationToken)
         where T : ICouchbaseCustomResource
     {
         var resourceLogger = _resourceLoggerService.GetLogger(resource);
@@ -194,7 +199,7 @@ internal sealed class CouchbaseClusterOrchestrator
             }
         }
 
-        if (skipIfExplicitStartup)
+        if (!isExplicitStart)
         {
             var explicitStartup = resource.TryGetAnnotationsOfType<ExplicitStartupAnnotation>(out _) is true;
             if (explicitStartup)
@@ -208,7 +213,7 @@ internal sealed class CouchbaseClusterOrchestrator
         await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStartingEvent(resource), cancellationToken).ConfigureAwait(false);
         try
         {
-            await callback(resource, resourceLogger, cancellationToken).ConfigureAwait(false);
+            await callback(resource, resourceLogger, isExplicitStart, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -223,10 +228,10 @@ internal sealed class CouchbaseClusterOrchestrator
         switch (resource)
         {
             case CouchbaseClusterResource cluster:
-                await StartResourceCoreAsync(cluster, StartClusterAsync, skipIfExplicitStartup: false, cancellationToken).ConfigureAwait(false);
+                await StartResourceCoreAsync(cluster, StartClusterAsync, isExplicitStart: true, cancellationToken).ConfigureAwait(false);
                 break;
             case CouchbaseBucketResource bucket:
-                await StartResourceCoreAsync(bucket, CreateBucketAsync, skipIfExplicitStartup: false, cancellationToken).ConfigureAwait(false);
+                await StartResourceCoreAsync(bucket, CreateBucketAsync, isExplicitStart: true, cancellationToken).ConfigureAwait(false);
                 break;
             default:
                 throw new ArgumentException("Unsupported resource type.", nameof(resource));
@@ -277,7 +282,7 @@ internal sealed class CouchbaseClusterOrchestrator
         }
     }
 
-    private Task StartClusterAsync(CouchbaseClusterResource cluster, ILogger resourceLogger, CancellationToken cancellationToken)
+    private Task StartClusterAsync(CouchbaseClusterResource cluster, ILogger resourceLogger, bool isExplicitStart, CancellationToken cancellationToken)
     {
         // Run the intialization process as a background task
         _ = Task.Run(async () =>
@@ -290,10 +295,27 @@ internal sealed class CouchbaseClusterOrchestrator
                     throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");
                 }
 
-                // Start all servers in the cluster
-                await Task.WhenAll(cluster.Servers.Select(p =>
-                    _resourceCommandService.ExecuteCommandAsync(p, KnownResourceCommands.StartCommand, cancellationToken))
-                ).ConfigureAwait(false);
+                if (isExplicitStart)
+                {
+                    // Start all servers in the cluster. This is only done on explicit start because on Aspire startup
+                    // the servers are started automatically by the container orchestrator. Ideally this orchestrator would
+                    // always control server lifecycle, but there is currently no event from the Aspire DCP executor to indicate
+                    // when it's safe to start the containers.
+
+                    await Task.WhenAll(cluster.Servers.Select(async p => {
+                        if (_resourceNotificationService.TryGetCurrentState(p.Name, out var currentResourceEvent))
+                        {
+                            var state = currentResourceEvent.Snapshot.State?.Text;
+                            if (KnownResourceStates.TerminalStates.Contains(state) || state == KnownResourceStates.NotStarted)
+                            {
+                                // Server is stopped, start it
+
+                                await _resourceCommandService.ExecuteCommandAsync(p, KnownResourceCommands.StartCommand, cancellationToken)
+                                    .ConfigureAwait(false);
+                            }
+                        }
+                    })).ConfigureAwait(false);
+                }
 
                 // Wait for the initial node before we consider the init to be running
                 resourceLogger.LogInformation("Waiting for resource {ResourceName} to be running...", primaryServer.Name);
@@ -509,7 +531,7 @@ internal sealed class CouchbaseClusterOrchestrator
         resourceLogger.LogInformation("Rebalance complete for cluster '{ClusterName}'.", server.Cluster.Name);
     }
 
-    private Task CreateBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken)
+    private Task CreateBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, bool isExplicitStart, CancellationToken cancellationToken)
     {
         // Run the intialization process as a background task
         _ = Task.Run(async () =>

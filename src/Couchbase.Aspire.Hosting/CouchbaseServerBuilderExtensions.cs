@@ -60,11 +60,10 @@ internal static class CouchbaseServerBuilderExtensions
                 }
             })
             .WithNodeCertificate()
-            .WithExplicitStart()
             .ExcludeFromManifest();
 
         // Add ports for insecure services only, secure services are added dynamically based on the
-        // Couchbase edition in ServerConfigurationActions
+        // Couchbase edition in WithClusterConfiguration
 
         var services = server.Services;
         if (services.HasFlag(CouchbaseServices.Data))

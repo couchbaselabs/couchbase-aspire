@@ -72,6 +72,18 @@ public static partial class CouchbaseClusterBuilderExtensions
             }
         });
 
+        builder.Eventing.Subscribe<BeforeStartEvent>(async (@event, ct) =>
+        {
+            if (cluster.TryGetAnnotationsOfType<ExplicitStartupAnnotation>(out var _) is true)
+            {
+                // Delay server startup until explicitly started
+                foreach (var server in cluster.Servers)
+                {
+                    server.Annotations.Add(new ExplicitStartupAnnotation());
+                }
+            }
+        });
+
         CouchbaseApiService.AddHttpClient(builder.Services, cluster);
 
         var healthCheckKey = $"{name}_check";
