@@ -344,6 +344,11 @@ internal sealed class CouchbaseClusterOrchestrator
 
                 var api = _apiService.GetApi(cluster);
 
+                await _resourceNotificationService.PublishUpdateAsync(cluster, s => s with
+                {
+                    State = new ResourceStateSnapshot("Initializing", KnownResourceStateStyles.Info)
+                }).ConfigureAwait(false);
+
                 // Initialize the cluster on the primary node
                 await InitializeClusterAsync(api, primaryServer, cancellationToken).ConfigureAwait(false);
 
@@ -368,6 +373,11 @@ internal sealed class CouchbaseClusterOrchestrator
 
                     if (additionalNodeTasks.Any(p => p.Result == true))
                     {
+                        await _resourceNotificationService.PublishUpdateAsync(cluster, s => s with
+                        {
+                            State = new ResourceStateSnapshot("Rebalancing", KnownResourceStateStyles.Info)
+                        }).ConfigureAwait(false);
+
                         // Nodes were added
                         await RebalanceAsync(api, primaryServer, cancellationToken).ConfigureAwait(false);
                     }
