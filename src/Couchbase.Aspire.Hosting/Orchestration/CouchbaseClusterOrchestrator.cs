@@ -251,7 +251,7 @@ internal sealed class CouchbaseClusterOrchestrator
             case CouchbaseClusterResource cluster:
                 await StartResourceCoreAsync(cluster, StartClusterAsync, isExplicitStart: true, cancellationToken).ConfigureAwait(false);
                 break;
-            case CouchbaseBucketResource bucket:
+            case CouchbaseBucketBaseResource bucket:
                 await StartResourceCoreAsync(bucket, CreateBucketAsync, isExplicitStart: true, cancellationToken).ConfigureAwait(false);
                 break;
             default:
@@ -295,7 +295,7 @@ internal sealed class CouchbaseClusterOrchestrator
             case CouchbaseClusterResource cluster:
                 await StopResourceCoreAsync(cluster, StopClusterAsync, cancellationToken).ConfigureAwait(false);
                 break;
-            case CouchbaseBucketResource bucket:
+            case CouchbaseBucketBaseResource bucket:
                 await StopResourceCoreAsync(bucket, StopBucketAsync, cancellationToken).ConfigureAwait(false);
                 break;
             default:
@@ -500,7 +500,7 @@ internal sealed class CouchbaseClusterOrchestrator
         resourceLogger.LogInformation("Rebalance complete for cluster '{ClusterName}'.", server.Cluster.Name);
     }
 
-    private Task CreateBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, bool isExplicitStart, CancellationToken cancellationToken)
+    private Task CreateBucketAsync(CouchbaseBucketBaseResource bucket, ILogger resourceLogger, bool isExplicitStart, CancellationToken cancellationToken)
     {
         // Run the intialization process as a background task
         _ = Task.Run(async () =>
@@ -535,7 +535,14 @@ internal sealed class CouchbaseClusterOrchestrator
                     }
                 }, cancellationToken);
 
-                await InitializeBucketAsync(bucket, resourceLogger, createBucketCancellation.Token).ConfigureAwait(false);
+                if (bucket is CouchbaseSampleBucketResource sampleBucket)
+                {
+                    await InitializeSampleBucketAsync(sampleBucket, resourceLogger, createBucketCancellation.Token).ConfigureAwait(false);
+                }
+                else if (bucket is CouchbaseBucketResource standardBucket)
+                {
+                    await InitializeBucketAsync(standardBucket, resourceLogger, createBucketCancellation.Token).ConfigureAwait(false);
+                }
 
                 await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStartedEvent(bucket), cancellationToken).ConfigureAwait(false);
             }
@@ -554,7 +561,7 @@ internal sealed class CouchbaseClusterOrchestrator
         return Task.CompletedTask;
     }
 
-    private async Task StopBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken)
+    private async Task StopBucketAsync(CouchbaseBucketBaseResource bucket, ILogger resourceLogger, CancellationToken cancellationToken)
     {
         // The bucket is effectively stopped by the cluster stopping, so simply mark the bucket resource as stopped.
         await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStoppedEvent(bucket), cancellationToken).ConfigureAwait(false);
@@ -597,6 +604,56 @@ internal sealed class CouchbaseClusterOrchestrator
         }
 
         resourceLogger.LogInformation("Created bucket '{BucketName}'.", bucket.BucketName);
+    }
+
+    private async Task InitializeSampleBucketAsync(CouchbaseSampleBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken = default)
+    {
+        var server = bucket.Parent.GetPrimaryServer();
+        if (server is null)
+        {
+            throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");
+        }
+
+        resourceLogger.LogInformation("Creating sample bucket '{BucketName}'...", bucket.BucketName);
+
+        var api = _apiService.GetApi(bucket.Parent);
+
+        var bucketInfo = await api.GetBucketAsync(server, bucket.BucketName, cancellationToken).ConfigureAwait(false);
+        if (bucketInfo is not null)
+        {
+            resourceLogger.LogInformation("Bucket '{BucketName}' already exists.", bucket.BucketName);
+        }
+        else
+        {
+            var response = await api.CreateSampleBucketAsync(server, bucket.BucketName, cancellationToken).ConfigureAwait(false);
+            var taskId = response.Tasks.FirstOrDefault()?.TaskId;
+
+            if (!string.IsNullOrEmpty(taskId))
+            {
+                await _resourceNotificationService.PublishUpdateAsync(bucket, s => s with
+                {
+                    State = new ResourceStateSnapshot("Loading", KnownResourceStateStyles.Info),
+                });
+
+                // Wait for the sample bucket creation task to complete. The bucket health checks will
+                // pass before the documents are fully loaded in the bucket.
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var tasks = await api.GetClusterTasksAsync(server, cancellationToken).ConfigureAwait(false);
+
+                    var sampleBucketTask = tasks.FirstOrDefault(p => p.TaskId == taskId);
+                    if (sampleBucketTask is null)
+                    {
+                        // When the task is complete, it's simply no longer listed
+                        break;
+                    }
+
+                    await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        resourceLogger.LogInformation("Created sample bucket '{BucketName}'.", bucket.BucketName);
     }
 
     /// <summary>

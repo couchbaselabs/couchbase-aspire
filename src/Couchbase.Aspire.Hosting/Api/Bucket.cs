@@ -18,3 +18,15 @@ internal sealed class BucketNode
     [JsonPropertyName("status")]
     public string? Status { get; set; }
 }
+
+internal sealed class SampleBucketResponse
+{
+    [JsonPropertyName("tasks")]
+    public List<SampleBucketTask> Tasks { get; set; } = [];
+}
+
+internal sealed class SampleBucketTask
+{
+    [JsonPropertyName("taskId")]
+    public string? TaskId { get; set; }
+}

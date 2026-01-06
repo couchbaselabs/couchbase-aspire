@@ -35,6 +35,8 @@ var cacheBucket = couchbase.AddBucket("cache-bucket", bucketName: "cache")
     .WithFlushEnabled()
     .WithMaximumTimeToLive(300);
 
+var sampleBucket = couchbase.AddSampleBucket("travel-sample-bucket", "travel-sample");
+
 builder.AddProject<Projects.Aspire_Test_WebApp>("aspire-test-webapp")
     .WithReference(couchbase)
     .WaitFor(testBucket);

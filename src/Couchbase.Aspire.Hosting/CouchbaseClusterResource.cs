@@ -118,14 +118,14 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
 
     public IEnumerable<CouchbaseServerResource> Servers => _serverGroups.Values.SelectMany(g => g.Servers);
 
-    private readonly Dictionary<string, CouchbaseBucketResource> _buckets = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CouchbaseBucketBaseResource> _buckets = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// A dictionary where the key is the resource name and the value is the bucket name.
     /// </summary>
-    public IReadOnlyDictionary<string, CouchbaseBucketResource> Buckets => _buckets;
+    public IReadOnlyDictionary<string, CouchbaseBucketBaseResource> Buckets => _buckets;
 
-    internal void AddBucket(string name, CouchbaseBucketResource bucket)
+    internal void AddBucket(string name, CouchbaseBucketBaseResource bucket)
     {
         _buckets.TryAdd(name, bucket);
     }

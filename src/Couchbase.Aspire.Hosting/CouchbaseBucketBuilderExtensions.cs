@@ -21,14 +21,43 @@ public static class CouchbaseBucketBuilderExtensions
     /// <returns>The resource builder for the bucket.</returns>
     public static IResourceBuilder<CouchbaseBucketResource> AddBucket(this IResourceBuilder<CouchbaseClusterResource> builder,
         [ResourceName] string name,
+        string? bucketName = null) =>
+        builder.AddBucket<CouchbaseBucketResource>(name, bucketName);
+
+    /// <summary>
+    /// Adds a sample bucket to the Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">The cluster builder.</param>
+    /// <param name="name">The name of the bucket resource.</param>
+    /// <param name="bucketName">The name of the sample bucket. Typically <c>travel-sample</c>, <c>beer-sample</c>, or <c>gamesim-sample</c>.</param>
+    /// <returns>The resource builder for the bucket.</returns>
+    public static IResourceBuilder<CouchbaseSampleBucketResource> AddSampleBucket(this IResourceBuilder<CouchbaseClusterResource> builder,
+        [ResourceName] string name,
+        string bucketName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(bucketName);
+
+        return builder.AddBucket<CouchbaseSampleBucketResource>(name, bucketName);
+    }
+
+    /// <summary>
+    /// Adds a bucket to the Couchbase cluster.
+    /// </summary>
+    /// <param name="builder">The cluster builder.</param>
+    /// <param name="name">The name of the bucket resource.</param>
+    /// <param name="bucketName">The name of the bucket. If <c>null</c>, the bucket name will default to the resource name.</param>
+    /// <returns>The resource builder for the bucket.</returns>
+    private static IResourceBuilder<T> AddBucket<T>(this IResourceBuilder<CouchbaseClusterResource> builder,
+        [ResourceName] string name,
         string? bucketName = null)
+        where T : CouchbaseBucketBaseResource, ICouchbaseBucketResource<T>
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(name);
 
         bucketName ??= name;
 
-        var bucket = new CouchbaseBucketResource(name, bucketName, builder.Resource);
+        var bucket = T.Create(name, bucketName, builder.Resource);
         builder.Resource.AddBucket(name, bucket);
 
         string? connectionString = null;

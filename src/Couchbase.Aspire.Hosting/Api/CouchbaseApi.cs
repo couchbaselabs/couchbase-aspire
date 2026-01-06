@@ -303,6 +303,37 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
         await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<SampleBucketResponse> CreateSampleBucketAsync(CouchbaseServerResource server, string bucketName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentException.ThrowIfNullOrEmpty(bucketName);
+
+        var response = await SendRequestAsync(server.GetManagementEndpoint(),
+            HttpMethod.Post,
+            "/sampleBuckets/install",
+            JsonContent.Create<List<string>>([bucketName]),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+
+        return (await response.Content.ReadFromJsonAsync<SampleBucketResponse>(cancellationToken).ConfigureAwait(false))!;
+    }
+
+    public async Task<List<ClusterTask>> GetClusterTasksAsync(CouchbaseServerResource server, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+
+        var response = await SendRequestAsync(server.GetManagementEndpoint(),
+            HttpMethod.Get,
+            $"/pools/default/tasks",
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+
+        return (await response.Content.ReadFromJsonAsync<List<ClusterTask>>(cancellationToken).ConfigureAwait(false)) ?? [];
+    }
+
     private async Task<HttpResponseMessage> SendRequestAsync(
         EndpointReference endpoint,
         HttpMethod method,

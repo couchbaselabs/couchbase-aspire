@@ -1,7 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using Aspire.Hosting.ApplicationModel;
-
 namespace Couchbase.Aspire.Hosting;
 
 /// <summary>
@@ -12,26 +8,8 @@ namespace Couchbase.Aspire.Hosting;
 /// <param name="bucketName">The name of the Couchbase bucket represented by this resource.</param>
 /// <param name="parent">The parent Couchbase cluster resource that hosts this bucket.</param>
 public class CouchbaseBucketResource(string name, string bucketName, CouchbaseClusterResource parent)
-    : Resource(name), IResourceWithWaitSupport, ICouchbaseCustomResource
+    : CouchbaseBucketBaseResource(name, bucketName, parent), ICouchbaseBucketResource<CouchbaseBucketResource>
 {
-    /// <summary>
-    /// Gets the parent Couchbase Server container resource.
-    /// </summary>
-    public CouchbaseClusterResource Parent { get; } = parent ?? throw new ArgumentNullException(nameof(parent));
-
-    /// <summary>
-    /// Gets the database name.
-    /// </summary>
-    public string BucketName { get; } = ThrowIfNullOrEmpty(bucketName);
-
-    /// <summary>
-    /// Gets the bucket name expression for the Couchbase bucket.
-    /// </summary>
-    public ReferenceExpression BucketNameExpression => ReferenceExpression.Create($"{BucketName}");
-
-    private static string ThrowIfNullOrEmpty([NotNull] string? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(argument, paramName);
-        return argument;
-    }
+    public static CouchbaseBucketResource Create(string name, string bucketName, CouchbaseClusterResource parent) =>
+        new(name, bucketName, parent);
 }
