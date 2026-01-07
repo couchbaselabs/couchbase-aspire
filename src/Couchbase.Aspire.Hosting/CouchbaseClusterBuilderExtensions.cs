@@ -110,6 +110,7 @@ public static partial class CouchbaseClusterBuilderExtensions
 
                     return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
                 },
+                serviceTypesFactory: _ => cluster.GetHealthCheckServiceTypes(),
                 name: healthCheckKey);
 
         return builder.AddResource(cluster)

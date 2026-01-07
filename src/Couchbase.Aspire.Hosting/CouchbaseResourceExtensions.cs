@@ -32,6 +32,40 @@ internal static class CouchbaseResourceExtensions
         return CouchbaseEdition.Enterprise;
     }
 
+    public static ServiceType[] GetHealthCheckServiceTypes(this CouchbaseClusterResource cluster)
+    {
+        ArgumentNullException.ThrowIfNull(cluster);
+
+        // Always include the data service
+        var enabledServices = CouchbaseServices.Data;
+        foreach (var serverGroup in cluster.ServerGroups.Values)
+        {
+            enabledServices |= serverGroup.Services;
+        }
+
+        static IEnumerable<ServiceType> GetServiceList(CouchbaseServices services)
+        {
+            if (services.HasFlag(CouchbaseServices.Data))
+            {
+                yield return ServiceType.KeyValue;
+            }
+            if (services.HasFlag(CouchbaseServices.Query))
+            {
+                yield return ServiceType.Query;
+            }
+            if (services.HasFlag(CouchbaseServices.Analytics))
+            {
+                yield return ServiceType.Analytics;
+            }
+            if (services.HasFlag(CouchbaseServices.Fts))
+            {
+                yield return ServiceType.Search;
+            }
+        }
+
+        return [.. GetServiceList(enabledServices)];
+    }
+
     public static CouchbaseCertificateAuthorityAnnotation? GetClusterCertificationAuthority(this CouchbaseClusterResource cluster)
     {
         if (cluster.TryGetLastAnnotation<CouchbaseCertificateAuthorityAnnotation>(out var annotation) &&

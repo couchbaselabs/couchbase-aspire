@@ -22,11 +22,12 @@ public static class CouchbaseHealthChecksBuilderExtensions
     /// An optional factory to obtain <see cref="ICluster" /> instance.
     /// When not provided, <see cref="IClusterProvider" /> is simply resolved from <see cref="IServiceProvider"/>.
     /// </param>
-    /// <param name="pingServiceTypesFactory">
-    /// List of services to ping. If <c>null</c> or if the callback returns <c>null</c>,
+    /// <param name="serviceTypesFactory">
+    /// List of services to test. If <c>null</c> or if the callback returns <c>null</c>,
     /// the key/value service will be pinged.
     /// </param>
     /// <param name="bucketNameFactory">An optional factory to obtain the name of the bucket to connect.</param>
+    /// <param name="activePing">Whether to perform an active ping or passive observation.</param>
     /// <param name="name">The health check name. Optional. If <c>null</c>, the type name 'couchbase' will be used for the name.</param>
     /// <param name="failureStatus">
     /// The <see cref="HealthStatus"/> that should be reported when the health check fails. Optional. If <c>null</c> then
@@ -37,8 +38,9 @@ public static class CouchbaseHealthChecksBuilderExtensions
     /// <returns>The specified <paramref name="builder"/>.</returns>
     public static IHealthChecksBuilder AddCouchbase(this IHealthChecksBuilder builder,
         Func<IServiceProvider, CancellationToken, Task<ICluster>>? clusterFactory = null,
-        Func<IServiceProvider, ServiceType[]?>? pingServiceTypesFactory = null,
+        Func<IServiceProvider, ServiceType[]?>? serviceTypesFactory = null,
         Func<IServiceProvider, string>? bucketNameFactory = null,
+        bool activePing = true,
         string? name = null,
         HealthStatus? failureStatus = default,
         IEnumerable<string>? tags = default,
@@ -73,10 +75,10 @@ public static class CouchbaseHealthChecksBuilderExtensions
                         return new ValueTask<ICluster>(clusterTask.AsTask().WaitAsync(ct));
                     };
 
-                ServiceType[]? pingServiceTypes = pingServiceTypesFactory?.Invoke(sp);
+                ServiceType[]? serviceTypes = serviceTypesFactory?.Invoke(sp);
                 string? bucketName = bucketNameFactory?.Invoke(sp);
 
-                return new CouchbaseHealthCheck(wrappedClusterFactory, pingServiceTypes, bucketName);
+                return new CouchbaseHealthCheck(wrappedClusterFactory, activePing, serviceTypes, bucketName);
             },
             failureStatus,
             tags,
