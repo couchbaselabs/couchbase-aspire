@@ -155,7 +155,8 @@ public abstract class CouchbaseHealthCheck : IHealthCheck
             {
                 allNodes.Add(endpoint.Remote);
 
-                if (endpoint.State is ServiceState.Connected or ServiceState.Ok)
+                if (endpoint.State is ServiceState.Connected or ServiceState.Ok ||
+                    (endpoint.State is null && endpoint.EndpointState is EndpointState.Connected))
                 {
                     healthyNodes.Add(endpoint.Remote);
                 }
