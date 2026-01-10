@@ -1,0 +1,32 @@
+using Couchbase.Diagnostics;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
+namespace Couchbase.HealthChecks;
+
+/// <summary>
+/// Couchbase health check that passively observes the cluster diagnostics report.
+/// </summary>
+/// <param name="clusterFactory">Factory to obtain the <see cref="ICluster" /> instance.
+/// <param name="serviceTypes"/>List of services to check. If <c>null</c>, defaults to <see cref="ServiceType.KeyValue"/>.</param>
+public class CouchbasePassiveHealthCheck(
+    Func<CancellationToken, ValueTask<ICluster>> clusterFactory,
+    ServiceType[]? serviceTypes = null)
+    : CouchbaseHealthCheck(clusterFactory, serviceTypes)
+{
+    /// <inheritdoc />
+    protected override async Task<HealthCheckResult> PerformCheckAsync(HealthCheckContext context, ICluster cluster, CancellationToken cancellationToken)
+    {
+        var diagnosticReport = await cluster.DiagnosticsAsync().ConfigureAwait(false);
+
+        return ParseReport(context, diagnosticReport);
+    }
+
+    /// <summary>
+    /// Analyzes the diagnostic report and converts it to a <see cref="HealthCheckResult"/>.
+    /// </summary>
+    /// <param name="context">The health check context.</param>
+    /// <param name="diagnosticReport">The diagnostic report.</param>
+    /// <returns>The health check result.</returns>
+    protected virtual HealthCheckResult ParseReport(HealthCheckContext context, IDiagnosticsReport diagnosticReport) =>
+        ParseReport(context, diagnosticReport.Services);
+}

@@ -177,7 +177,7 @@ public static class AspireCouchbaseExtensions
                         // if the IClusterProvider can't be resolved, make a health check that will fail
                         var clusterProvider = serviceKey is null ? sp.GetRequiredService<IClusterProvider>() : sp.GetRequiredKeyedService<IClusterProvider>(serviceKey);
 
-                        return new CouchbaseHealthCheck(ct =>
+                        return new CouchbaseActiveHealthCheck(ct =>
                         {
                             var clusterTask = clusterProvider.GetClusterAsync();
 

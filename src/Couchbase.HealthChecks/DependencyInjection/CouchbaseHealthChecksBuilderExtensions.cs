@@ -19,15 +19,15 @@ public static class CouchbaseHealthChecksBuilderExtensions
     /// </summary>
     /// <param name="builder">The <see cref="IHealthChecksBuilder"/>.</param>
     /// <param name="clusterFactory">
-    /// An optional factory to obtain <see cref="ICluster" /> instance.
+    /// An optional factory to obtain the <see cref="ICluster" /> instance.
     /// When not provided, <see cref="IClusterProvider" /> is simply resolved from <see cref="IServiceProvider"/>.
     /// </param>
     /// <param name="serviceTypesFactory">
     /// List of services to test. If <c>null</c> or if the callback returns <c>null</c>,
     /// the key/value service will be pinged.
     /// </param>
-    /// <param name="bucketNameFactory">An optional factory to obtain the name of the bucket to connect.</param>
-    /// <param name="activePing">Whether to perform an active ping or passive observation.</param>
+    /// <param name="bucketNameFactory">An optional factory to obtain the name of the bucket to connect. Only applies to active health checks.</param>
+    /// <param name="healthCheckType">Whether to perform an active ping or passive observation.</param>
     /// <param name="name">The health check name. Optional. If <c>null</c>, the type name 'couchbase' will be used for the name.</param>
     /// <param name="failureStatus">
     /// The <see cref="HealthStatus"/> that should be reported when the health check fails. Optional. If <c>null</c> then
@@ -40,7 +40,7 @@ public static class CouchbaseHealthChecksBuilderExtensions
         Func<IServiceProvider, CancellationToken, Task<ICluster>>? clusterFactory = null,
         Func<IServiceProvider, ServiceType[]?>? serviceTypesFactory = null,
         Func<IServiceProvider, string>? bucketNameFactory = null,
-        bool activePing = true,
+        CouchbaseHealthCheckType healthCheckType = CouchbaseHealthCheckType.Active,
         string? name = null,
         HealthStatus? failureStatus = default,
         IEnumerable<string>? tags = default,
@@ -49,6 +49,10 @@ public static class CouchbaseHealthChecksBuilderExtensions
         if (builder is null)
         {
             throw new ArgumentNullException(nameof(builder));
+        }
+        if (healthCheckType < CouchbaseHealthCheckType.Active || healthCheckType > CouchbaseHealthCheckType.Passive)
+        {
+            throw new ArgumentException($"Unsupported health check type: {healthCheckType}.", nameof(healthCheckType));
         }
 
         return builder.Add(new HealthCheckRegistration(
@@ -76,9 +80,15 @@ public static class CouchbaseHealthChecksBuilderExtensions
                     };
 
                 ServiceType[]? serviceTypes = serviceTypesFactory?.Invoke(sp);
-                string? bucketName = bucketNameFactory?.Invoke(sp);
 
-                return new CouchbaseHealthCheck(wrappedClusterFactory, activePing, serviceTypes, bucketName);
+                return healthCheckType switch
+                {
+                    CouchbaseHealthCheckType.Active =>
+                        new CouchbaseActiveHealthCheck(wrappedClusterFactory, serviceTypes, bucketNameFactory?.Invoke(sp)),
+                    CouchbaseHealthCheckType.Passive =>
+                        new CouchbasePassiveHealthCheck(wrappedClusterFactory, serviceTypes),
+                    _ => null! // Unreachable
+                };
             },
             failureStatus,
             tags,
