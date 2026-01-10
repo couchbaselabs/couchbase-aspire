@@ -4,7 +4,7 @@ Couchbase hosting and client integrations for Microsoft Aspire.
 
 ## Getting Started
 
-To be written.
+See the [Hosting](src/Couchbase.Aspire.Hosting/README.md) and [Client](src/Couchbase.Aspire.Client/README.md) documentation for details on how to get started.
 
 ## Contributing
 
