@@ -1,3 +1,10 @@
 <Project>
+  <ItemGroup>
+    <!-- Remove first so we can add README. We can't use Update because it won't be in the None ItemGroup for multi-targeted builds -->
+    <None Remove="README.md" />
+    <None Include="README.md" Pack="true" PackagePath="\"
+          Condition="Exists('$(MSBuildProjectDirectory)/README.md')" />
+  </ItemGroup>
+
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)../'))" />
 </Project>
