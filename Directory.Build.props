@@ -7,12 +7,21 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
 
+    <Copyright>Copyright (c) 2026 Couchbase, Inc.</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageIconFullPath>$(MSBuildThisFileDirectory)couchbase.png</PackageIconFullPath>
+    <PackageProjectUrl>https://github.com/couchbaselabs/couchbase-aspire</PackageProjectUrl>
+    <WarnOnPackingNonPackableProject>false</WarnOnPackingNonPackableProject>
+
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <NoWarn>$(NoWarn);CS1591</NoWarn> <!-- We're missing a lot of XML doc comments currently -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>embedded</DebugType>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 </Project>
