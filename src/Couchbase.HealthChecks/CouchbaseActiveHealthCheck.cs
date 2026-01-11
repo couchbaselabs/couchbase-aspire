@@ -6,20 +6,18 @@ namespace Couchbase.HealthChecks;
 /// <summary>
 /// Couchbase health check that actively pings a set of services and optionally confirms connection to a specific bucket.
 /// </summary>
-/// <param name="clusterFactory">Factory to obtain the <see cref="ICluster" /> instance.
-/// <param name="serviceTypes"/>List of services to check. If <c>null</c>, defaults to <see cref="ServiceType.KeyValue"/>.</param>
+/// <param name="clusterFactory">Factory to obtain the <see cref="ICluster" /> instance.</param>
 /// <param name="bucketName">Optional bucket name to check.</param>
 public class CouchbaseActiveHealthCheck(
     Func<CancellationToken, ValueTask<ICluster>> clusterFactory,
-    ServiceType[]? serviceTypes = null,
     string? bucketName = null)
-    : CouchbaseHealthCheck(clusterFactory, serviceTypes)
+    : CouchbaseHealthCheck(clusterFactory)
 {
     /// <inheritdoc />
     protected override async Task<HealthCheckResult> PerformCheckAsync(HealthCheckContext context, ICluster cluster, CancellationToken cancellationToken)
     {
         var pingOptions = new PingOptions()
-            .ServiceTypes(ServiceTypes)
+            .ServiceTypes([..ServiceTypes])
             .CancellationToken(cancellationToken);
 
         IPingReport pingReport;

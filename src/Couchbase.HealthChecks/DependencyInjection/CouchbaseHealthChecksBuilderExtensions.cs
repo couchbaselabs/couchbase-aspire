@@ -22,10 +22,8 @@ public static class CouchbaseHealthChecksBuilderExtensions
     /// An optional factory to obtain the <see cref="ICluster" /> instance.
     /// When not provided, <see cref="IClusterProvider" /> is simply resolved from <see cref="IServiceProvider"/>.
     /// </param>
-    /// <param name="serviceTypesFactory">
-    /// List of services to test. If <c>null</c> or if the callback returns <c>null</c>,
-    /// the key/value service will be pinged.
-    /// </param>
+    /// <param name="minimumHealthyNodesFactory">Minimum number of healthy nodes per service required to report healthy.</param>
+    /// <param name="maximumUnhealthyNodesFactory">Maximum number of unhealthy nodes per service allowed to report healthy.</param>
     /// <param name="bucketNameFactory">An optional factory to obtain the name of the bucket to connect. Only applies to active health checks.</param>
     /// <param name="healthCheckType">Whether to perform an active ping or passive observation.</param>
     /// <param name="name">The health check name. Optional. If <c>null</c>, the type name 'couchbase' will be used for the name.</param>
@@ -38,7 +36,8 @@ public static class CouchbaseHealthChecksBuilderExtensions
     /// <returns>The specified <paramref name="builder"/>.</returns>
     public static IHealthChecksBuilder AddCouchbase(this IHealthChecksBuilder builder,
         Func<IServiceProvider, CancellationToken, Task<ICluster>>? clusterFactory = null,
-        Func<IServiceProvider, ServiceType[]?>? serviceTypesFactory = null,
+        Func<IServiceProvider, Dictionary<ServiceType, int>>? minimumHealthyNodesFactory = null,
+        Func<IServiceProvider, Dictionary<ServiceType, int>>? maximumUnhealthyNodesFactory = null,
         Func<IServiceProvider, string>? bucketNameFactory = null,
         CouchbaseHealthCheckType healthCheckType = CouchbaseHealthCheckType.Active,
         string? name = null,
@@ -79,16 +78,28 @@ public static class CouchbaseHealthChecksBuilderExtensions
                         return new ValueTask<ICluster>(clusterTask.AsTask().WaitAsync(ct));
                     };
 
-                ServiceType[]? serviceTypes = serviceTypesFactory?.Invoke(sp);
-
-                return healthCheckType switch
+                CouchbaseHealthCheck healthCheck = healthCheckType switch
                 {
                     CouchbaseHealthCheckType.Active =>
-                        new CouchbaseActiveHealthCheck(wrappedClusterFactory, serviceTypes, bucketNameFactory?.Invoke(sp)),
+                        new CouchbaseActiveHealthCheck(wrappedClusterFactory, bucketNameFactory?.Invoke(sp)),
                     CouchbaseHealthCheckType.Passive =>
-                        new CouchbasePassiveHealthCheck(wrappedClusterFactory, serviceTypes),
+                        new CouchbasePassiveHealthCheck(wrappedClusterFactory),
                     _ => null! // Unreachable
                 };
+
+                var minimumHealthyNodes = minimumHealthyNodesFactory?.Invoke(sp);
+                if (minimumHealthyNodes is not null)
+                {
+                    healthCheck.MinimumHealthyNodes = minimumHealthyNodes;
+                }
+
+                var maximumUnhealthyNodes = maximumUnhealthyNodesFactory?.Invoke(sp);
+                if (maximumUnhealthyNodes is not null)
+                {
+                    healthCheck.MaximumUnhealthyNodes = maximumUnhealthyNodes;
+                }
+
+                return healthCheck;
             },
             failureStatus,
             tags,

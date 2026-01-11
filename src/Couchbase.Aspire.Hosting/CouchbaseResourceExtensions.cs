@@ -32,7 +32,8 @@ internal static class CouchbaseResourceExtensions
         return CouchbaseEdition.Enterprise;
     }
 
-    public static ServiceType[] GetHealthCheckServiceTypes(this CouchbaseClusterResource cluster)
+    public static Dictionary<ServiceType, int> GetHealthCheckServiceTypes(this CouchbaseClusterResource cluster,
+        bool maximumUnhealthy)
     {
         ArgumentNullException.ThrowIfNull(cluster);
 
@@ -43,27 +44,37 @@ internal static class CouchbaseResourceExtensions
             enabledServices |= serverGroup.Services;
         }
 
-        static IEnumerable<ServiceType> GetServiceList(CouchbaseServices services)
+        static Dictionary<ServiceType, int> GetServiceList(CouchbaseServices services, bool maximumUnhealthy)
         {
+            var result = new Dictionary<ServiceType, int>();
+
             if (services.HasFlag(CouchbaseServices.Data))
             {
-                yield return ServiceType.KeyValue;
+                // For data, require all nodes be healthy
+                result[ServiceType.KeyValue] = maximumUnhealthy ? 0 : 1;
             }
-            if (services.HasFlag(CouchbaseServices.Query))
+
+            if (!maximumUnhealthy)
             {
-                yield return ServiceType.Query;
+                // For other services, only require a minimum of 1 healthy node
+                if (services.HasFlag(CouchbaseServices.Query))
+                {
+                    result[ServiceType.Query] = 1;
+                }
+                if (services.HasFlag(CouchbaseServices.Analytics))
+                {
+                    result[ServiceType.Analytics] = 1;
+                }
+                if (services.HasFlag(CouchbaseServices.Fts))
+                {
+                    result[ServiceType.Search] = 1;
+                }
             }
-            if (services.HasFlag(CouchbaseServices.Analytics))
-            {
-                yield return ServiceType.Analytics;
-            }
-            if (services.HasFlag(CouchbaseServices.Fts))
-            {
-                yield return ServiceType.Search;
-            }
+
+            return result;
         }
 
-        return [.. GetServiceList(enabledServices)];
+        return GetServiceList(enabledServices, maximumUnhealthy);
     }
 
     public static CouchbaseCertificateAuthorityAnnotation? GetClusterCertificationAuthority(this CouchbaseClusterResource cluster)

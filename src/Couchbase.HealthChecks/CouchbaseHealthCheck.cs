@@ -7,7 +7,10 @@ namespace Couchbase.HealthChecks;
 /// <summary>
 /// Base type for a Couchbase health check.
 /// </summary>
-public abstract class CouchbaseHealthCheck : IHealthCheck
+/// <param name="clusterFactory">Factory to obtain the <see cref="ICluster" /> instance.</param>
+public abstract class CouchbaseHealthCheck(
+    Func<CancellationToken, ValueTask<ICluster>> clusterFactory)
+    : IHealthCheck
 {
     // When running the tests locally during development, don't re-attempt
     // as it prolongs the time it takes to run the tests.
@@ -18,55 +21,41 @@ public abstract class CouchbaseHealthCheck : IHealthCheck
         = 2;
 #endif
 
-    private readonly Func<CancellationToken, ValueTask<ICluster>> _clusterFactory;
+    private readonly Func<CancellationToken, ValueTask<ICluster>> _clusterFactory = clusterFactory ?? throw new ArgumentNullException(nameof(clusterFactory));
     private ICluster? _cluster;
-
-    /// <summary>
-    /// List of services to check.
-    /// </summary>
-    protected ServiceType[] ServiceTypes { get; }
 
     /// <summary>
     /// The minimum number of healthy nodes per service required to report healthy.
     /// </summary>
     /// <value>
-    /// Defaults to <c>1</c> for all services.
+    /// Defaults to <c>1</c> for <see cref="ServiceType.KeyValue"/>.
     /// </value>
-    public Dictionary<ServiceType, int> MinimumHealthyNodesByService { get; set; } = [];
+    public Dictionary<ServiceType, int> MinimumHealthyNodes { get; set; } = new()
+    {
+        { ServiceType.KeyValue, 1 },
+    };
 
     /// <summary>
     /// The maximum number of unhealthy nodes per service allowed to report healthy.
     /// </summary>
     /// <value>
-    /// Defaults to <c>0</c> for <see cref="ServiceType.KeyValue"/> and unlimited for other services.
+    /// Defaults to <c>0</c> for <see cref="ServiceType.KeyValue"/>.
     /// </value>
-    public Dictionary<ServiceType, int> MaximumUnhealthyNodesByService { get; set; } = [];
+    public Dictionary<ServiceType, int> MaximumUnhealthyNodes { get; set; } = new()
+    {
+        { ServiceType.KeyValue, 0 },
+    };
 
     /// <summary>
-    /// Creates a new CouchbaseHealthCheck instance.
+    /// Types of services being checked, based on <see cref="MinimumHealthyNodes"/> and <see cref="MaximumUnhealthyNodes"/>.
     /// </summary>
-    /// <param name="clusterFactory">Factory to obtain the <see cref="ICluster" /> instance.
-    /// <param name="serviceTypes"/>List of services to check. If <c>null</c>, defaults to <see cref="ServiceType.KeyValue"/>.</param>
-    protected CouchbaseHealthCheck(
-        Func<CancellationToken, ValueTask<ICluster>> clusterFactory,
-        ServiceType[]? serviceTypes = null)
+    protected IEnumerable<ServiceType> ServiceTypes
     {
-        if (clusterFactory is null)
+        get
         {
-            throw new ArgumentNullException(nameof(clusterFactory));
-        }
-
-        _clusterFactory = clusterFactory;
-
-        // Make a clone of the array to ensure immutability
-        ServiceTypes = serviceTypes is not null
-            ? [..serviceTypes]
-            : [ServiceType.KeyValue];
-
-        foreach (var service in ServiceTypes)
-        {
-            MinimumHealthyNodesByService[service] = 1;
-            MaximumUnhealthyNodesByService[service] = service == ServiceType.KeyValue ? 0 : int.MaxValue;
+            var serviceTypes = new HashSet<ServiceType>(MinimumHealthyNodes.Keys);
+            serviceTypes.UnionWith(MaximumUnhealthyNodes.Keys);
+            return serviceTypes;
         }
     }
 
@@ -163,7 +152,7 @@ public abstract class CouchbaseHealthCheck : IHealthCheck
             }
         }
 
-        var minimumHealthyNodes = MinimumHealthyNodesByService.TryGetValue(serviceType, out var minHealthy)
+        var minimumHealthyNodes = MinimumHealthyNodes.TryGetValue(serviceType, out var minHealthy)
             ? minHealthy
             : 1;
 
@@ -173,7 +162,7 @@ public abstract class CouchbaseHealthCheck : IHealthCheck
                 BuildFailedResultMessage(serviceType, allNodes, healthyNodes));
         }
 
-        var maximumUnhealthyNodes = MinimumHealthyNodesByService.TryGetValue(serviceType, out var maxUnhealthy)
+        var maximumUnhealthyNodes = MinimumHealthyNodes.TryGetValue(serviceType, out var maxUnhealthy)
             ? maxUnhealthy
             : int.MaxValue;
 

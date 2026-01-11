@@ -6,12 +6,10 @@ namespace Couchbase.HealthChecks;
 /// <summary>
 /// Couchbase health check that passively observes the cluster diagnostics report.
 /// </summary>
-/// <param name="clusterFactory">Factory to obtain the <see cref="ICluster" /> instance.
-/// <param name="serviceTypes"/>List of services to check. If <c>null</c>, defaults to <see cref="ServiceType.KeyValue"/>.</param>
+/// <param name="clusterFactory">Factory to obtain the <see cref="ICluster" /> instance.</param>
 public class CouchbasePassiveHealthCheck(
-    Func<CancellationToken, ValueTask<ICluster>> clusterFactory,
-    ServiceType[]? serviceTypes = null)
-    : CouchbaseHealthCheck(clusterFactory, serviceTypes)
+    Func<CancellationToken, ValueTask<ICluster>> clusterFactory)
+    : CouchbaseHealthCheck(clusterFactory)
 {
     /// <inheritdoc />
     protected override async Task<HealthCheckResult> PerformCheckAsync(HealthCheckContext context, ICluster cluster, CancellationToken cancellationToken)
