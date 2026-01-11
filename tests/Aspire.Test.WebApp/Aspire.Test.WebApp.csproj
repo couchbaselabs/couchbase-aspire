@@ -9,4 +9,6 @@
     <ProjectReference Include="..\Aspire.Test.ServiceDefaults\Aspire.Test.ServiceDefaults.csproj" />
   </ItemGroup>
 
+  <Import Project="..\..\src\Couchbase.Aspire.Client\buildTransitive\Couchbase.Aspire.Client.targets" />
+
 </Project>
