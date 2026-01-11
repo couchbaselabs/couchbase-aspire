@@ -1,4 +1,3 @@
-using System.Text;
 using Couchbase.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
@@ -25,37 +24,26 @@ public abstract class CouchbaseHealthCheck(
     private ICluster? _cluster;
 
     /// <summary>
-    /// The minimum number of healthy nodes per service required to report healthy.
+    /// Requirements to enforce for each service type.
     /// </summary>
     /// <value>
-    /// Defaults to <c>1</c> for <see cref="ServiceType.KeyValue"/>.
+    /// Defaults to requiring 1 healthy node and allowing no unhealthy nodes for <see cref="ServiceType.KeyValue"/>.
     /// </value>
-    public Dictionary<ServiceType, int> MinimumHealthyNodes { get; set; } = new()
+    public Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> ServiceRequirements
     {
-        { ServiceType.KeyValue, 1 },
-    };
-
-    /// <summary>
-    /// The maximum number of unhealthy nodes per service allowed to report healthy.
-    /// </summary>
-    /// <value>
-    /// Defaults to <c>0</c> for <see cref="ServiceType.KeyValue"/>.
-    /// </value>
-    public Dictionary<ServiceType, int> MaximumUnhealthyNodes { get; set; } = new()
-    {
-        { ServiceType.KeyValue, 0 },
-    };
-
-    /// <summary>
-    /// Types of services being checked, based on <see cref="MinimumHealthyNodes"/> and <see cref="MaximumUnhealthyNodes"/>.
-    /// </summary>
-    protected IEnumerable<ServiceType> ServiceTypes
-    {
-        get
+        get => field ??= CreateDefaultServiceRequirements();
+        set
         {
-            var serviceTypes = new HashSet<ServiceType>(MinimumHealthyNodes.Keys);
-            serviceTypes.UnionWith(MaximumUnhealthyNodes.Keys);
-            return serviceTypes;
+#if NET6_0_OR_GREATER
+            ArgumentNullException.ThrowIfNull(value);
+#else
+            if (value is null)
+            {
+                throw new ArgumentNullException(nameof(value));
+            }
+#endif
+
+            field = value;
         }
     }
 
@@ -108,11 +96,12 @@ public abstract class CouchbaseHealthCheck(
     protected abstract Task<HealthCheckResult> PerformCheckAsync(HealthCheckContext context, ICluster cluster, CancellationToken cancellationToken);
 
     // Default implementation for parsing reports
-    private protected HealthCheckResult ParseReport(HealthCheckContext context, IDictionary<string, IEnumerable<IEndpointDiagnostics>> services)
+    private protected async ValueTask<HealthCheckResult> ParseReportAsync(HealthCheckContext context, IDictionary<string, IEnumerable<IEndpointDiagnostics>> services,
+        CancellationToken cancellationToken = default)
     {
-        foreach (var serviceType in ServiceTypes)
+        foreach (var service in ServiceRequirements)
         {
-            var serviceName = GetServiceName(serviceType);
+            var serviceName = GetServiceName(service.Key);
             if (serviceName is not null)
             {
                 if (!services.TryGetValue(serviceName, out var endpoints))
@@ -121,10 +110,13 @@ public abstract class CouchbaseHealthCheck(
                     endpoints = [];
                 }
 
-                var result = ValidateServiceEndpoints(context, serviceType, endpoints);
-                if (result.Status != HealthStatus.Healthy)
+                foreach (var requirement in service.Value)
                 {
-                    return result;
+                    var result = await requirement.ValidateAsync(context, service.Key, endpoints, cancellationToken).ConfigureAwait(false);
+                    if (result.Status != HealthStatus.Healthy)
+                    {
+                        return result;
+                    }
                 }
             }
         }
@@ -132,48 +124,11 @@ public abstract class CouchbaseHealthCheck(
         return HealthCheckResult.Healthy();
     }
 
-    private HealthCheckResult ValidateServiceEndpoints(HealthCheckContext context, ServiceType serviceType,
-        IEnumerable<IEndpointDiagnostics> endpoints)
-    {
-        var allNodes = new HashSet<string>();
-        var healthyNodes = new HashSet<string>();
-
-        foreach (var endpoint in endpoints)
+    public static Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> CreateDefaultServiceRequirements() =>
+        new()
         {
-            if (endpoint.Remote is not null)
-            {
-                allNodes.Add(endpoint.Remote);
-
-                if (endpoint.State is ServiceState.Connected or ServiceState.Ok ||
-                    (endpoint.State is null && endpoint.EndpointState is EndpointState.Connected))
-                {
-                    healthyNodes.Add(endpoint.Remote);
-                }
-            }
-        }
-
-        var minimumHealthyNodes = MinimumHealthyNodes.TryGetValue(serviceType, out var minHealthy)
-            ? minHealthy
-            : 1;
-
-        if (healthyNodes.Count < minimumHealthyNodes)
-        {
-            return new HealthCheckResult(context.Registration.FailureStatus,
-                BuildFailedResultMessage(serviceType, allNodes, healthyNodes));
-        }
-
-        var maximumUnhealthyNodes = MinimumHealthyNodes.TryGetValue(serviceType, out var maxUnhealthy)
-            ? maxUnhealthy
-            : int.MaxValue;
-
-        if ((allNodes.Count - healthyNodes.Count) > maximumUnhealthyNodes)
-        {
-            return new HealthCheckResult(context.Registration.FailureStatus,
-                BuildFailedResultMessage(serviceType, allNodes, healthyNodes));
-        }
-
-        return HealthCheckResult.Healthy();
-    }
+            { ServiceType.KeyValue, [new CouchbaseServiceHealthNodeRequirement { MinimumHealthyNodes = 1, MaximumUnhealthyNodes = 0 }] },
+        };
 
     private static string? GetServiceName(ServiceType serviceType)
     {
@@ -186,44 +141,5 @@ public abstract class CouchbaseHealthCheck(
             ServiceType.Views => "views",
             _ => null
         };
-    }
-
-    private static string BuildFailedResultMessage(ServiceType serviceType, HashSet<string> allNodes, HashSet<string> healthyNodes)
-    {
-        var builder = new StringBuilder();
-        builder.Append("Couchbase health check failed for service ");
-        builder.Append(serviceType);
-
-        if (allNodes.Count > 0)
-        {
-            builder.Append(" for nodes ");
-
-            var enumerator = allNodes.Except(healthyNodes).GetEnumerator();
-            try
-            {
-                if (enumerator.MoveNext())
-                {
-                    builder.Append(enumerator.Current);
-
-                    while (enumerator.MoveNext())
-                    {
-                        builder.Append(", ");
-                        builder.Append(enumerator.Current);
-                    }
-                }
-            }
-            finally
-            {
-                enumerator?.Dispose();
-            }
-
-            builder.Append('.');
-        }
-        else
-        {
-            builder.Append(", no nodes available.");
-        }
-
-        return builder.ToString();
     }
 }

@@ -22,8 +22,10 @@ public static class CouchbaseHealthChecksBuilderExtensions
     /// An optional factory to obtain the <see cref="ICluster" /> instance.
     /// When not provided, <see cref="IClusterProvider" /> is simply resolved from <see cref="IServiceProvider"/>.
     /// </param>
-    /// <param name="minimumHealthyNodesFactory">Minimum number of healthy nodes per service required to report healthy.</param>
-    /// <param name="maximumUnhealthyNodesFactory">Maximum number of unhealthy nodes per service allowed to report healthy.</param>
+    /// <param name="serviceRequirementsFactory">
+    /// Factory that defines service health requirements. If <c>null</c>, defaults to requiring 1 healthy data node and
+    /// disallowing unhealthy data nodes.
+    /// </param>
     /// <param name="bucketNameFactory">An optional factory to obtain the name of the bucket to connect. Only applies to active health checks.</param>
     /// <param name="healthCheckType">Whether to perform an active ping or passive observation.</param>
     /// <param name="name">The health check name. Optional. If <c>null</c>, the type name 'couchbase' will be used for the name.</param>
@@ -36,8 +38,7 @@ public static class CouchbaseHealthChecksBuilderExtensions
     /// <returns>The specified <paramref name="builder"/>.</returns>
     public static IHealthChecksBuilder AddCouchbase(this IHealthChecksBuilder builder,
         Func<IServiceProvider, CancellationToken, Task<ICluster>>? clusterFactory = null,
-        Func<IServiceProvider, Dictionary<ServiceType, int>>? minimumHealthyNodesFactory = null,
-        Func<IServiceProvider, Dictionary<ServiceType, int>>? maximumUnhealthyNodesFactory = null,
+        Func<IServiceProvider, Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>>>? serviceRequirementsFactory = null,
         Func<IServiceProvider, string>? bucketNameFactory = null,
         CouchbaseHealthCheckType healthCheckType = CouchbaseHealthCheckType.Active,
         string? name = null,
@@ -87,16 +88,10 @@ public static class CouchbaseHealthChecksBuilderExtensions
                     _ => null! // Unreachable
                 };
 
-                var minimumHealthyNodes = minimumHealthyNodesFactory?.Invoke(sp);
-                if (minimumHealthyNodes is not null)
+                var serviceRequirements = serviceRequirementsFactory?.Invoke(sp);
+                if (serviceRequirements is not null)
                 {
-                    healthCheck.MinimumHealthyNodes = minimumHealthyNodes;
-                }
-
-                var maximumUnhealthyNodes = maximumUnhealthyNodesFactory?.Invoke(sp);
-                if (maximumUnhealthyNodes is not null)
-                {
-                    healthCheck.MaximumUnhealthyNodes = maximumUnhealthyNodes;
+                    healthCheck.ServiceRequirements = serviceRequirements;
                 }
 
                 return healthCheck;

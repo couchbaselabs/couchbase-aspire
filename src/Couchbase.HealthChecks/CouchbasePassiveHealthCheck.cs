@@ -16,7 +16,7 @@ public class CouchbasePassiveHealthCheck(
     {
         var diagnosticReport = await cluster.DiagnosticsAsync().ConfigureAwait(false);
 
-        return ParseReport(context, diagnosticReport);
+        return await ParseReportAsync(context, diagnosticReport, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -24,7 +24,9 @@ public class CouchbasePassiveHealthCheck(
     /// </summary>
     /// <param name="context">The health check context.</param>
     /// <param name="diagnosticReport">The diagnostic report.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The health check result.</returns>
-    protected virtual HealthCheckResult ParseReport(HealthCheckContext context, IDiagnosticsReport diagnosticReport) =>
-        ParseReport(context, diagnosticReport.Services);
+    protected virtual ValueTask<HealthCheckResult> ParseReportAsync(HealthCheckContext context, IDiagnosticsReport diagnosticReport,
+        CancellationToken cancellationToken = default) =>
+        ParseReportAsync(context, diagnosticReport.Services, cancellationToken);
 }

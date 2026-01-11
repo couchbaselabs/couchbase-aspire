@@ -17,7 +17,7 @@ public class CouchbaseActiveHealthCheck(
     protected override async Task<HealthCheckResult> PerformCheckAsync(HealthCheckContext context, ICluster cluster, CancellationToken cancellationToken)
     {
         var pingOptions = new PingOptions()
-            .ServiceTypes([..ServiceTypes])
+            .ServiceTypes([..ServiceRequirements.Keys])
             .CancellationToken(cancellationToken);
 
         IPingReport pingReport;
@@ -36,7 +36,7 @@ public class CouchbaseActiveHealthCheck(
             pingReport = await cluster.PingAsync(pingOptions).ConfigureAwait(false);
         }
 
-        return ParseReport(context, pingReport);
+        return await ParseReportAsync(context, pingReport, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -44,7 +44,9 @@ public class CouchbaseActiveHealthCheck(
     /// </summary>
     /// <param name="context">The health check context.</param>
     /// <param name="pingReport">The ping report.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The health check result.</returns>
-    protected virtual HealthCheckResult ParseReport(HealthCheckContext context, IPingReport pingReport) =>
-        ParseReport(context, pingReport.Services);
+    protected virtual ValueTask<HealthCheckResult> ParseReportAsync(HealthCheckContext context, IPingReport pingReport,
+        CancellationToken cancellationToken = default) =>
+        ParseReportAsync(context, pingReport.Services, cancellationToken);
 }

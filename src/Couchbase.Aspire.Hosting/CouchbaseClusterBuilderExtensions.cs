@@ -110,8 +110,7 @@ public static partial class CouchbaseClusterBuilderExtensions
 
                     return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
                 },
-                minimumHealthyNodesFactory: _ => cluster.GetHealthCheckServiceTypes(maximumUnhealthy: false),
-                maximumUnhealthyNodesFactory: _ => cluster.GetHealthCheckServiceTypes(maximumUnhealthy: true),
+                serviceRequirementsFactory: _ => cluster.GetHealthCheckServiceRequirements(),
                 name: healthCheckKey);
 
         return builder.AddResource(cluster)

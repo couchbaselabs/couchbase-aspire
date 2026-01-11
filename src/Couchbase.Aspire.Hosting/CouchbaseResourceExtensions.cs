@@ -1,5 +1,6 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Couchbase.HealthChecks;
 
 namespace Couchbase.Aspire.Hosting;
 
@@ -32,8 +33,7 @@ internal static class CouchbaseResourceExtensions
         return CouchbaseEdition.Enterprise;
     }
 
-    public static Dictionary<ServiceType, int> GetHealthCheckServiceTypes(this CouchbaseClusterResource cluster,
-        bool maximumUnhealthy)
+    public static Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> GetHealthCheckServiceRequirements(this CouchbaseClusterResource cluster)
     {
         ArgumentNullException.ThrowIfNull(cluster);
 
@@ -44,37 +44,47 @@ internal static class CouchbaseResourceExtensions
             enabledServices |= serverGroup.Services;
         }
 
-        static Dictionary<ServiceType, int> GetServiceList(CouchbaseServices services, bool maximumUnhealthy)
+        static Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> GetServiceList(CouchbaseServices services)
         {
-            var result = new Dictionary<ServiceType, int>();
+            var result = new Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>>();
 
             if (services.HasFlag(CouchbaseServices.Data))
             {
                 // For data, require all nodes be healthy
-                result[ServiceType.KeyValue] = maximumUnhealthy ? 0 : 1;
+                result.Add(ServiceType.KeyValue, [new CouchbaseServiceHealthNodeRequirement
+                {
+                    MinimumHealthyNodes = 1,
+                    MaximumUnhealthyNodes = 0
+                }]);
             }
 
-            if (!maximumUnhealthy)
+            // For other services, only require a minimum of 1 healthy node
+            if (services.HasFlag(CouchbaseServices.Query))
             {
-                // For other services, only require a minimum of 1 healthy node
-                if (services.HasFlag(CouchbaseServices.Query))
+                result.Add(ServiceType.Query, [new CouchbaseServiceHealthNodeRequirement
                 {
-                    result[ServiceType.Query] = 1;
-                }
-                if (services.HasFlag(CouchbaseServices.Analytics))
+                    MinimumHealthyNodes = 1
+                }]);
+            }
+            if (services.HasFlag(CouchbaseServices.Analytics))
+            {
+                result.Add(ServiceType.Analytics, [new CouchbaseServiceHealthNodeRequirement
                 {
-                    result[ServiceType.Analytics] = 1;
-                }
-                if (services.HasFlag(CouchbaseServices.Fts))
+                    MinimumHealthyNodes = 1
+                }]);
+            }
+            if (services.HasFlag(CouchbaseServices.Fts))
+            {
+                result.Add(ServiceType.Search, [new CouchbaseServiceHealthNodeRequirement
                 {
-                    result[ServiceType.Search] = 1;
-                }
+                    MinimumHealthyNodes = 1
+                }]);
             }
 
             return result;
         }
 
-        return GetServiceList(enabledServices, maximumUnhealthy);
+        return GetServiceList(enabledServices);
     }
 
     public static CouchbaseCertificateAuthorityAnnotation? GetClusterCertificationAuthority(this CouchbaseClusterResource cluster)

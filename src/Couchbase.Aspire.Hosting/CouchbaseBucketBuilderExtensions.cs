@@ -97,8 +97,7 @@ public static class CouchbaseBucketBuilderExtensions
                     return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
                 },
                 bucketNameFactory: _ => bucket.BucketName,
-                minimumHealthyNodesFactory: _ => bucket.Parent.GetHealthCheckServiceTypes(maximumUnhealthy: false),
-                maximumUnhealthyNodesFactory: _ => bucket.Parent.GetHealthCheckServiceTypes(maximumUnhealthy: true),
+                serviceRequirementsFactory: _ => bucket.Parent.GetHealthCheckServiceRequirements(),
                 name: healthCheckKey);
 
         return builder.ApplicationBuilder
