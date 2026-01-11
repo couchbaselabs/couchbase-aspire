@@ -131,7 +131,7 @@ public abstract class CouchbaseHealthCheck(
     public static Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> CreateDefaultServiceRequirements() =>
         new()
         {
-            { ServiceType.KeyValue, [new CouchbaseServiceHealthNodeRequirement { MinimumHealthyNodes = 1, MaximumUnhealthyNodes = 0 }] },
+            { ServiceType.KeyValue, [CouchbaseServiceHealthNodeRequirement.AllNodesHealthy] },
         };
 
     private static string? GetServiceName(ServiceType serviceType)

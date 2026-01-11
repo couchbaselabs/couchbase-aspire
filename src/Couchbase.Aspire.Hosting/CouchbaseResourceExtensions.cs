@@ -51,34 +51,21 @@ internal static class CouchbaseResourceExtensions
             if (services.HasFlag(CouchbaseServices.Data))
             {
                 // For data, require all nodes be healthy
-                result.Add(ServiceType.KeyValue, [new CouchbaseServiceHealthNodeRequirement
-                {
-                    MinimumHealthyNodes = 1,
-                    MaximumUnhealthyNodes = 0
-                }]);
+                result.Add(ServiceType.KeyValue, [CouchbaseServiceHealthNodeRequirement.AllNodesHealthy]);
             }
 
             // For other services, only require a minimum of 1 healthy node
             if (services.HasFlag(CouchbaseServices.Query))
             {
-                result.Add(ServiceType.Query, [new CouchbaseServiceHealthNodeRequirement
-                {
-                    MinimumHealthyNodes = 1
-                }]);
+                result.Add(ServiceType.Query, [CouchbaseServiceHealthNodeRequirement.OneHealthyNode]);
             }
             if (services.HasFlag(CouchbaseServices.Analytics))
             {
-                result.Add(ServiceType.Analytics, [new CouchbaseServiceHealthNodeRequirement
-                {
-                    MinimumHealthyNodes = 1
-                }]);
+                result.Add(ServiceType.Analytics, [CouchbaseServiceHealthNodeRequirement.OneHealthyNode]);
             }
             if (services.HasFlag(CouchbaseServices.Fts))
             {
-                result.Add(ServiceType.Search, [new CouchbaseServiceHealthNodeRequirement
-                {
-                    MinimumHealthyNodes = 1
-                }]);
+                result.Add(ServiceType.Search, [CouchbaseServiceHealthNodeRequirement.OneHealthyNode]);
             }
 
             return result;

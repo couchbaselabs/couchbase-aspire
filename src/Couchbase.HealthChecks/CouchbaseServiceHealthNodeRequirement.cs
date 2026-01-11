@@ -12,6 +12,20 @@ namespace Couchbase.HealthChecks;
 public class CouchbaseServiceHealthNodeRequirement : ICouchbaseServiceHealthRequirement
 {
     /// <summary>
+    /// Requirement which demands at least one healthy node.
+    /// </summary>
+    public static CouchbaseServiceHealthNodeRequirement OneHealthyNode => new();
+
+    /// <summary>
+    /// Requirement which demands all nodes be healthy.
+    /// </summary>
+    public static CouchbaseServiceHealthNodeRequirement AllNodesHealthy => new()
+    {
+        MinimumHealthyNodes = 1,
+        MaximumUnhealthyNodes = 0
+    };
+
+    /// <summary>
     /// Minimum number of healthy nodes required to report healthy.
     /// </summary>
     /// <value>
