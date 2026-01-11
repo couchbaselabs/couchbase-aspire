@@ -43,6 +43,67 @@
                                         "type": "string"
                                     }
                                 },
+                                "HealthChecks": {
+                                    "type": "object",
+                                    "description": "Gets or sets settings related to health checks.",
+                                    "properties": {
+                                        "Type": {
+                                            "type": "string",
+                                            "description": "Gets or sets the type of health check to perform.",
+                                            "enum": [ "Active", "Passive" ],
+                                            "default": "Active"
+                                        },
+                                        "MinimumHealthyNodes": {
+                                            "type": "object",
+                                            "description": "Gets or sets the minimum number of healthy nodes required for each service.",
+                                            "properties": {
+                                                "KeyValue": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "description": "The threshold for the key/value service."
+                                                },
+                                                "Query": {
+                                                    "type": "integer",
+                                                    "description": "The threshold for the query service."
+                                                },
+                                                "Search": {
+                                                    "type": "integer",
+                                                    "description": "The threshold for the full-text search service."
+                                                },
+                                                "Analytics": {
+                                                    "type": "integer",
+                                                    "description": "The threshold for the analytics service."
+                                                }
+                                            }
+                                        },
+                                        "MaximumUnhealthyNodes": {
+                                            "type": "object",
+                                            "description": "Gets or sets the maximum number of unhealthy nodes allowed for each service.",
+                                            "properties": {
+                                                "KeyValue": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "description": "The threshold for the key/value service."
+                                                },
+                                                "Query": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "description": "The threshold for the query service."
+                                                },
+                                                "Search": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "description": "The threshold for the full-text search service."
+                                                },
+                                                "Analytics": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "description": "The threshold for the analytics service."
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
                                 "DisableHealthChecks": {
                                     "type": "boolean",
                                     "description": "Gets or sets a boolean value that indicates whether the Couchbase health check is disabled or not.",

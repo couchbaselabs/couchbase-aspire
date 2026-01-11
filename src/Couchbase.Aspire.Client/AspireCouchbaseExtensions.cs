@@ -168,6 +168,24 @@ public static class AspireCouchbaseExtensions
 
         if (!settings.DisableHealthChecks)
         {
+            // Build the requirements once to avoid rebuilding them on every health check
+            var serviceRequirements = CouchbaseHealthCheck.CreateDefaultServiceRequirements();
+            if (settings.HealthChecks is CouchbaseHealthCheckSettings healthCheckSettings)
+            {
+                // Overrides the defaults for minimum/maximum nodes if specified
+                if (healthCheckSettings.MinimumHealthyNodes is { Count: > 0 })
+                {
+                    ApplyNodeRequirement(serviceRequirements, healthCheckSettings.MinimumHealthyNodes,
+                        (requirement, value) => requirement.MinimumHealthyNodes = value);
+                }
+
+                if (healthCheckSettings.MaximumUnhealthyNodes is { Count: > 0 })
+                {
+                    ApplyNodeRequirement(serviceRequirements, healthCheckSettings.MaximumUnhealthyNodes,
+                        (requirement, value) => requirement.MaximumUnhealthyNodes = value);
+                }
+            }
+
             builder.TryAddHealthCheck(new HealthCheckRegistration(
                 serviceKey is null ? "Couchbase.Client" : $"Couchbase.Client_{connectionName}",
                 sp =>
@@ -177,7 +195,7 @@ public static class AspireCouchbaseExtensions
                         // if the IClusterProvider can't be resolved, make a health check that will fail
                         var clusterProvider = serviceKey is null ? sp.GetRequiredService<IClusterProvider>() : sp.GetRequiredKeyedService<IClusterProvider>(serviceKey);
 
-                        return new CouchbaseActiveHealthCheck(ct =>
+                        ValueTask<ICluster> ClusterFactory(CancellationToken ct)
                         {
                             var clusterTask = clusterProvider.GetClusterAsync();
 
@@ -189,7 +207,17 @@ public static class AspireCouchbaseExtensions
                             }
 
                             return new ValueTask<ICluster>(clusterTask.AsTask().WaitAsync(ct));
-                        });
+                        }
+
+                        CouchbaseHealthCheck healthCheck = settings.HealthChecks?.Type switch
+                        {
+                            CouchbaseHealthCheckType.Passive => new CouchbasePassiveHealthCheck(ClusterFactory),
+                            _ => new CouchbaseActiveHealthCheck(ClusterFactory)
+                        };
+
+                        healthCheck.ServiceRequirements = serviceRequirements;
+
+                        return healthCheck;
                     }
                     catch (Exception ex)
                     {
@@ -198,6 +226,30 @@ public static class AspireCouchbaseExtensions
                 },
                 failureStatus: default,
                 tags: default));
+        }
+    }
+
+    private static void ApplyNodeRequirement(
+        Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> serviceRequirements,
+        Dictionary<ServiceType, int> values,
+        Action<CouchbaseServiceHealthNodeRequirement, int> applyValue)
+    {
+        foreach (var service in values)
+        {
+            if (!serviceRequirements.TryGetValue(service.Key, out var requirements))
+            {
+                requirements = [];
+                serviceRequirements.Add(service.Key, requirements);
+            }
+
+            var nodeRequirement = requirements.OfType<CouchbaseServiceHealthNodeRequirement>().FirstOrDefault();
+            if (nodeRequirement is null)
+            {
+                nodeRequirement = new CouchbaseServiceHealthNodeRequirement();
+                requirements.Add(nodeRequirement);
+            }
+
+            applyValue(nodeRequirement, service.Value);
         }
     }
 

@@ -25,6 +25,11 @@ public sealed class CouchbaseClientSettings
     public Dictionary<string, string> BucketNameMap { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets settings related to health checks.
+    /// </summary>
+    public CouchbaseHealthCheckSettings? HealthChecks { get; set; }
+
+    /// <summary>
     /// Gets or sets a boolean value that indicates whether the Couchbase health check is disabled or not.
     /// </summary>
     /// <value>

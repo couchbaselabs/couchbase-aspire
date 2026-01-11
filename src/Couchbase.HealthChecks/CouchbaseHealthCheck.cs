@@ -124,6 +124,10 @@ public abstract class CouchbaseHealthCheck(
         return HealthCheckResult.Healthy();
     }
 
+    /// <summary>
+    /// Builds a default set of requirements for the <see cref="ServiceRequirements"/> property.
+    /// </summary>
+    /// <returns>A new dictionary with the default requirements.</returns>
     public static Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> CreateDefaultServiceRequirements() =>
         new()
         {
