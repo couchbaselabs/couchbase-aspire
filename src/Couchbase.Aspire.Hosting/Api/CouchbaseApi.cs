@@ -75,6 +75,7 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
             { "queryMemoryQuota", quotas.QueryServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
             { "indexMemoryQuota", quotas.IndexServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
             { "ftsMemoryQuota", quotas.FtsServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
+            { "indexerStorageMode", GetEnumValueString(cluster.GetIndexStorageMode()) },
             { "services", BuildServicesString(server.Services) },
             { "port", "SAME" },
         };

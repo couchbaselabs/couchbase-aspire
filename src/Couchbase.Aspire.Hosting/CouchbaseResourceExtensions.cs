@@ -33,6 +33,21 @@ internal static class CouchbaseResourceExtensions
         return CouchbaseEdition.Enterprise;
     }
 
+    public static CouchbaseIndexStorageMode GetIndexStorageMode(this CouchbaseClusterResource cluster)
+    {
+        ArgumentNullException.ThrowIfNull(cluster);
+
+        CouchbaseIndexStorageMode? mode = null;
+        if (cluster.TryGetLastAnnotation<CouchbaseIndexStorageModeAnnotation>(out var annotation))
+        {
+            mode = annotation.Mode;
+        }
+
+        return mode ?? (cluster.GetCouchbaseEdition() == CouchbaseEdition.Enterprise
+            ? CouchbaseIndexStorageMode.Plasma
+            : CouchbaseIndexStorageMode.ForestDB);
+    }
+
     public static Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> GetHealthCheckServiceRequirements(this CouchbaseClusterResource cluster)
     {
         ArgumentNullException.ThrowIfNull(cluster);

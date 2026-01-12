@@ -357,7 +357,7 @@ public static partial class CouchbaseClusterBuilderExtensions
     /// Select the edition of Couchbase Server.
     /// </summary>
     /// <param name="builder">Builder for the Couchbase cluster.</param>
-    /// <param name="edition">The edition of Couchbase Serer.</param>
+    /// <param name="edition">The edition of Couchbase Server.</param>
     /// <returns>The <see cref="IResourceBuilder{CouchbaseClusterResource}"/>.</returns>
     /// <remarks>
     /// If using custom image registries or tags, the tag will be prefixed with "enterprise-" or "community-"
@@ -402,6 +402,20 @@ public static partial class CouchbaseClusterBuilderExtensions
             });
 
         return builder;
+    }
+
+    /// <summary>
+    /// Select the index storage mode of Couchbase Server.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="mode">The index storage mode. If <c>null</c>, selects a default based on the Couchbase edition.</param>
+    /// <returns>The <see cref="IResourceBuilder{CouchbaseClusterResource}"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithIndexStorageMode(this IResourceBuilder<CouchbaseClusterResource> builder, CouchbaseIndexStorageMode? mode)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder
+            .WithAnnotation(new CouchbaseIndexStorageModeAnnotation { Mode = mode }, ResourceAnnotationMutationBehavior.Replace);
     }
 
     /// <summary>
