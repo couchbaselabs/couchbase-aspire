@@ -4,7 +4,9 @@ using Couchbase.Management.Buckets;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var couchbase = builder.AddCouchbase("couchbase")
+var couchbasePassword = builder.AddParameter("couchbase-password", "password");
+
+var couchbase = builder.AddCouchbase("couchbase", password: couchbasePassword)
     .WithManagementPort(8091) // Optional fixed port number for the primary node
     .WithSecureManagementPort(18091) // Optional fixed port number for the primary node
     .WithCouchbaseEdition(CouchbaseEdition.Enterprise); // Optional edition, default is Enterprise
