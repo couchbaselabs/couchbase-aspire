@@ -5,7 +5,8 @@
     <IsPackable>true</IsPackable>
     <PackageTags>aspire integration client component cloud couchbase</PackageTags>
     <Description>A Couchbase client that integrates with Aspire, including health checks, logging, and telemetry.</Description>
-    <IncludeContentInPack>true</IncludeContentInPack>
+
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectBuildTransitive</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,9 +21,16 @@
     <ProjectReference Include="..\Couchbase.HealthChecks\Couchbase.HealthChecks.csproj" />
   </ItemGroup>
 
+  <Target Name="CollectBuildTransitive" >
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="buildTransitive/any/*.targets">
+        <PackagePath>buildTransitive/$(TargetFramework)</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
-    <Content Include="ConfigurationSchema.json" PackagePath="\" />
-    <Content Include="buildTransitive\Couchbase.Aspire.Client.targets" PackagePath="\buildTransitive\" />
+    <Content Include="ConfigurationSchema.json" Pack="True" PackagePath="." />
   </ItemGroup>
 
 </Project>
