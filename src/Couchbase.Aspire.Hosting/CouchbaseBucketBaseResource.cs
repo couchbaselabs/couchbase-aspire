@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 
 namespace Couchbase.Aspire.Hosting;
@@ -17,7 +18,7 @@ internal interface ICouchbaseBucketResource<TSelf> where TSelf : ICouchbaseBucke
 /// <param name="bucketName">The name of the Couchbase bucket represented by this resource.</param>
 /// <param name="parent">The parent Couchbase cluster resource that hosts this bucket.</param>
 public abstract class CouchbaseBucketBaseResource(string name, string bucketName, CouchbaseClusterResource parent)
-    : Resource(name), IResourceWithWaitSupport, ICouchbaseCustomResource
+    : Resource(name), IResourceWithWaitSupport, IResourceWithConnectionString, ICouchbaseCustomResource
 {
     /// <summary>
     /// Gets the parent Couchbase Server container resource.
@@ -33,6 +34,19 @@ public abstract class CouchbaseBucketBaseResource(string name, string bucketName
     /// Gets the bucket name expression for the Couchbase bucket.
     /// </summary>
     public ReferenceExpression BucketNameExpression => ReferenceExpression.Create($"{BucketName}");
+
+    /// <summary>
+    /// Gets the connection URI expression for the Couchbase bucket.
+    /// </summary>
+    /// <remarks>
+    /// Format: <c>couchbase://{user}:{password}@{host}:{port}/{bucketName}</c>.
+    /// </remarks>
+    public ReferenceExpression ConnectionStringExpression => Parent.BuildConnectionString(BucketName);
+
+    IEnumerable<KeyValuePair<string, ReferenceExpression>> IResourceWithConnectionString.GetConnectionProperties() =>
+        Parent.CombineProperties([
+            new("BucketName", BucketNameExpression)
+        ]);
 
     private static string ThrowIfNullOrEmpty([NotNull] string? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
     {

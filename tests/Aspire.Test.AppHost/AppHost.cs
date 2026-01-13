@@ -42,7 +42,6 @@ var sampleBucket = couchbase.AddSampleBucket("travel-sample-bucket", "travel-sam
 builder.AddProject<Projects.Aspire_Test_WebApp>("aspire-test-webapp")
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
-    .WithReference(couchbase)
-    .WaitFor(testBucket);
+    .WithReference(testBucket).WaitFor(testBucket);
 
 builder.Build().Run();

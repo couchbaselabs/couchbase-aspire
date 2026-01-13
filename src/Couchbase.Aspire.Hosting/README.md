@@ -20,7 +20,7 @@ var servers = couchbase.AddServerGroup("couchbase_servers");
 var bucket = servers.AddBucket("mybucket");
 
 var myService = builder.AddProject<Projects.MyService>()
-    .WithReference(couchbase)
+    .WithReference(bucket)
     .WaitFor(bucket);
 ```
 
@@ -36,14 +36,18 @@ The Couchbase cluster resource exposes the following connection properties:
 | ------------- | ----------- |
 | `Username` | The username for authentication |
 | `Password` | The password for authentication |
-| `Uri` | The connection URI, with the format `couchbase://{Host}:{Port},{Host2}:{Port}` or `couchbases://{Host}:{Port},{Host2}:{Port}` |
-| `BucketNameMap` | A comma-separated list of key/value pairs mapping resource names to bucket names, with the format `BucketResource1=Bucket1,BucketResource2=Bucket2` |
-
-Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance, the `Uri` property of a resource called `cluster1` becomes `CLUSTER1_URI`.
+| `Uri` | The connection URI, with the format `couchbase://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}` or `couchbases://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}` |
 
 ### Couchbase bucket
 
-Buckets do not produce any connection properties, they should be accessed via the cluster connection. However, the `BucketNameMap` does allow the consuming application to use either the resource name or the bucket name to access the bucket. Additionally, the bucket resource can be used to define dependencies for startup ordering using `WaitFor`.
+The Couchbase bucket resource exposes the following connection properties:
+
+| Property Name | Description |
+| ------------- | ----------- |
+| `Username` | The username for authentication |
+| `Password` | The password for authentication |
+| `Uri` | The connection URI, with the format `couchbase://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}/{BucketName}` or `couchbases://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}/{BucketName}` |
+| `BucketName` | The name of the bucket |
 
 ## Feedback & contributing
 

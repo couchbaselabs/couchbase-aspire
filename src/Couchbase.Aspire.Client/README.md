@@ -33,11 +33,40 @@ public ProductsController(IBucketProvider bucketProvider)
 }
 ```
 
+If the connection string includes a bucket name, you can get the bucket instance via `INamedBucketProvider` without specifying the bucket name again:
+
+```csharp
+private readonly INamedBucketProvider _bucketProvider;
+
+public ProductsController(INamedBucketProvider bucketProvider)
+{
+    _bucketProvider = bucketProvider;
+}
+```
+
 ## Configuration
 
 The Aspire Couchbase component offers various options for configuring the database connection according to your project's requirements and conventions.
 
-### Use environment variables
+### Use a connection string
+
+When using a connection string from the `ConnectionStrings` configuration section, you can provide the name of the connection string as the parameter when calling `AddCouchbaseClient`:
+
+```csharp
+builder.AddCouchbaseClient("myConnection");
+```
+
+And then the connection string will be retrieved from the `ConnectionStrings` configuration section:
+
+```json
+{
+  "ConnectionStrings": {
+    "myConnection": "couchbases://username:password@server1:11207,server2:11207/mybucket?option1=value1&option2=value2"
+  }
+}
+```
+
+See the [ConnectionString documentation](https://docs.couchbase.com/dotnet-sdk/current/howtos/managing-connections.html#connection-strings) for more information on how to format this connection string. `Couchbase.Aspire.Client` extends the standard connection string format by allowing the inclusion of the username, password, and bucket name directly in the connection string.
 
 ### Use configuration providers
 
@@ -51,20 +80,13 @@ The Aspire Couchbase component supports [Microsoft.Extensions.Configuration](htt
         "ConnectionString": "couchbases://server:port",
         "Username": "username",
         "Password": "password",
+        "BucketName": "mybucket", // Optional bucket name
         "DisableHealthChecks": false,
         "DisableTracing": false
       }
     }
   }
 }
-```
-
-If the configuration provider uses `AddEnvironmentVariables()`, you can also set the options using environment variables. Note that the prefix "COUCHBASE_" in the example below is based on the `"couchbase"` connection string name passed to `AddCouchbaseClient`.
-
-```sh
-export COUCHBASE_URI="couchbases://server:port"
-export COUCHBASE_USERNAME="username"
-export COUCHBASE_PASSWORD="password"
 ```
 
 ### Use inline delegates
@@ -100,14 +122,19 @@ var servers = couchbase.AddServerGroup("couchbase_servers");
 var bucket = servers.AddBucket("mybucket");
 
 var myService = builder.AddProject<Projects.MyService>()
-    .WithReference(couchbase)
+    .WithReference(bucket)
     .WaitFor(bucket);
+
+// Altertively, reference the cluster rather than a specific bucket, INamedBucketProvider will not be registered in DI
+var myService2 = builder.AddProject<Projects.MyService>()
+    .WithReference(couchbase)
+    .WaitFor(couchbase);
 ```
 
-The `WithReference` method configures a connection in the `MyService` project named `couchbase`. In the _Program.cs_ file of `MyService`, the database connection can be consumed using:
+The `WithReference` method configures a connection to a bucket in the `MyService` project named `mybucket`. In the _Program.cs_ file of `MyService`, the database connection can be consumed using:
 
 ```csharp
-builder.AddCouchbaseClient("couchbase");
+builder.AddCouchbaseClient("mybucket");
 ```
 
 ## Additional documentation

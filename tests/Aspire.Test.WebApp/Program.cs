@@ -4,7 +4,7 @@ using Couchbase.Aspire.Client;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.AddCouchbaseClient("couchbase");
+builder.AddCouchbaseClient("test-bucket");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

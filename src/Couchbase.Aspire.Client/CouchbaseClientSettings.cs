@@ -1,9 +1,19 @@
-using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 namespace Couchbase.Aspire.Client;
 
-public sealed class CouchbaseClientSettings
+public sealed partial class CouchbaseClientSettings
 {
+    private const string ConnectionStringRegexPattern = @"^(?<scheme>[^:]+)://(?:(?<username>[^\n@:]+)(?:\:(?<password>[^\n@]*))?@)?(?<hosts>[^\n?/]+)(?:/(?<bucket>[^\n?/]+)?)?(?:\?(?<params>.+))?";
+
+#if NET8_0_OR_GREATER
+    [GeneratedRegex(ConnectionStringRegexPattern, RegexOptions.CultureInvariant)]
+    private static partial Regex ConnectionStringRegex();
+#else
+    private static Regex? _connectionStringRegex;
+    private static Regex ConnectionStringRegex() => _connectionStringRegex ??= new Regex(ConnectionStringRegexPattern, RegexOptions.CultureInvariant);
+#endif
+
     /// <summary>
     /// Gets or sets the connection string of the Couchbase server to connect to.
     /// </summary>
@@ -20,9 +30,9 @@ public sealed class CouchbaseClientSettings
     public string? Password { get; set; }
 
     /// <summary>
-    /// Gets or sets a mapping of bucket logical names to physical bucket names.
+    /// Gets or sets the bucket name to connect to.
     /// </summary>
-    public Dictionary<string, string> BucketNameMap { get; set; } = [];
+    public string? BucketName { get; set; }
 
     /// <summary>
     /// Gets or sets settings related to health checks.
@@ -53,46 +63,37 @@ public sealed class CouchbaseClientSettings
     /// </value>
     public bool DisableMetrics { get; set; }
 
-    internal void FillBucketNameMap(string? maps)
+    internal void ApplyConnectionString(string connectionString)
     {
-        if (string.IsNullOrEmpty(maps))
+        // Couchbase SDK doesn't handle username/password/bucket in the connection string, so extract them
+
+        var match = ConnectionStringRegex().Match(connectionString);
+        if (!match.Success)
         {
+            ConnectionString = connectionString;
             return;
         }
 
-        Span<Range> parts = stackalloc Range[2];
-
-#if NET9_0_OR_GREATER
-        var altLookup = BucketNameMap.GetAlternateLookup<ReadOnlySpan<char>>();
-#endif
-
-        foreach (var map in maps.Split(','))
+        if (match.Groups["username"] is { Success: true, Value: string username })
         {
-            var partCount = map.Split(parts, '=', StringSplitOptions.TrimEntries);
-            if (partCount == 2)
-            {
-                var logicalName = map.AsSpan()[parts[0]];
-                var physicalName = map.AsSpan()[parts[1]];
-                if (!logicalName.IsEmpty)
-                {
-                    if (physicalName.IsEmpty)
-                    {
-#if NET9_0_OR_GREATER
-                        altLookup.Remove(logicalName);
-#else
-                        BucketNameMap.Remove(logicalName.ToString());
-#endif
-                    }
-                    else
-                    {
-#if NET9_0_OR_GREATER
-                        altLookup[logicalName] = physicalName.ToString();
-#else
-                        BucketNameMap[logicalName.ToString()] = physicalName.ToString();
-#endif
-                    }
-                }
-            }
+            Username = username;
+        }
+        if (match.Groups["password"] is { Success: true, Value: string password })
+        {
+            Password = password;
+        }
+        if (match.Groups["bucket"] is { Success: true, Value: string bucketName })
+        {
+            BucketName = bucketName;
+        }
+
+        if (match.Groups["params"] is { Success: true, Value: string queryParams })
+        {
+            ConnectionString = $"{match.Groups["scheme"].Value}://{match.Groups["hosts"].Value}?{queryParams}";
+        }
+        else
+        {
+            ConnectionString = $"{match.Groups["scheme"].Value}://{match.Groups["hosts"].Value}";
         }
     }
 }

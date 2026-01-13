@@ -72,6 +72,10 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
 
         var builder = new ReferenceExpressionBuilder();
         builder.AppendLiteral(useSsl ? "couchbases://" : "couchbase://");
+        builder.AppendFormatted(UserNameReference);
+        builder.AppendLiteral(":");
+        builder.AppendFormatted(PasswordParameter);
+        builder.AppendLiteral("@");
 
         var servers = _serverGroups.Values
             .Where(p => p.Services.HasFlag(CouchbaseServices.Data))
@@ -98,7 +102,8 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
 
         if (bucketName is not null)
         {
-            builder.Append($"/{bucketName:uri}");
+            builder.AppendLiteral("/");
+            builder.AppendFormatted(bucketName, "uri");
         }
 
         return builder.Build();
@@ -135,29 +140,5 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
         yield return new("Username", UserNameReference);
         yield return new("Password", ReferenceExpression.Create($"{PasswordParameter}"));
         yield return new("Uri", ConnectionStringExpression);
-
-        if (_buckets.Count > 0)
-        {
-            var builder = new ReferenceExpressionBuilder();
-
-            var first = true;
-            foreach (var bucket in _buckets.Values)
-            {
-                if (first)
-                {
-                    first = false;
-                }
-                else
-                {
-                    builder.AppendLiteral(",");
-                }
-
-                builder.AppendLiteral(bucket.Name);
-                builder.AppendLiteral("=");
-                builder.AppendFormatted(bucket.BucketNameExpression);
-            }
-
-            yield return new("BucketNameMap", builder.Build());
-        }
     }
 }

@@ -72,26 +72,9 @@ public static class AspireCouchbaseExtensions
         configSection.Bind(settings);
         namedConfigSection.Bind(settings);
 
-        if (builder.Configuration.GetValue<string>($"{connectionName}_Uri") is string uri)
+        if (builder.Configuration.GetConnectionString(connectionName) is string connectionString)
         {
-            settings.ConnectionString = uri;
-        }
-        else if (builder.Configuration.GetConnectionString(connectionName) is string connectionString)
-        {
-            settings.ConnectionString = connectionString;
-        }
-
-        if (builder.Configuration.GetValue<string>($"{connectionName}_Username") is string username)
-        {
-            settings.Username = username;
-        }
-        if (builder.Configuration.GetValue<string>($"{connectionName}_Password") is string password)
-        {
-            settings.Password = password;
-        }
-        if (builder.Configuration.GetValue<string>($"{connectionName}_BucketNameMap") is string bucketNameMap)
-        {
-            settings.FillBucketNameMap(bucketNameMap);
+            settings.ApplyConnectionString(connectionString);
         }
 
         configureSettings?.Invoke(settings);
@@ -139,15 +122,23 @@ public static class AspireCouchbaseExtensions
 
         if (serviceKey is null)
         {
-            builder.Services.TryAddSingleton<IBucketProvider>(sp =>
-                new BucketProvider(sp.GetRequiredService<IClusterProvider>(), settings.BucketNameMap));
             builder.Services.AddCouchbase(ConfigureClusterOptions);
+
+            if (!string.IsNullOrEmpty(settings.BucketName))
+            {
+                builder.Services.TryAddSingleton<INamedBucketProvider>(sp =>
+                    new BucketProvider(sp.GetRequiredService<IClusterProvider>(), settings.BucketName));
+            }
         }
         else
         {
-            builder.Services.TryAddKeyedSingleton<IBucketProvider>(serviceKey, (sp, serviceKey) =>
-                new BucketProvider(sp.GetRequiredKeyedService<IClusterProvider>(serviceKey), settings.BucketNameMap));
             builder.Services.AddKeyedCouchbase(serviceKey, ConfigureClusterOptions);
+
+            if (!string.IsNullOrEmpty(settings.BucketName))
+            {
+                builder.Services.TryAddKeyedSingleton<INamedBucketProvider>(serviceKey, (sp, serviceKey) =>
+                    new BucketProvider(sp.GetRequiredKeyedService<IClusterProvider>(serviceKey), settings.BucketName));
+            }
         }
 
         if (!settings.DisableTracing)
@@ -212,7 +203,7 @@ public static class AspireCouchbaseExtensions
                         CouchbaseHealthCheck healthCheck = settings.HealthChecks?.Type switch
                         {
                             CouchbaseHealthCheckType.Passive => new CouchbasePassiveHealthCheck(ClusterFactory),
-                            _ => new CouchbaseActiveHealthCheck(ClusterFactory)
+                            _ => new CouchbaseActiveHealthCheck(ClusterFactory, settings.BucketName)
                         };
 
                         healthCheck.ServiceRequirements = serviceRequirements;
