@@ -82,7 +82,17 @@ The Aspire Couchbase component supports [Microsoft.Extensions.Configuration](htt
         "Password": "password",
         "BucketName": "mybucket", // Optional bucket name
         "DisableHealthChecks": false,
-        "DisableTracing": false
+        "DisableTracing": false,
+        "HealthChecks": {
+          "Type": "Active",
+          "MinimumHealthyNodes": {
+            "KeyValue": 2,
+            "Query": 2
+          },
+          "MaximumUnhealthyNodes": {
+            "KeyValue": 0,
+            "Query": 1
+          }
       }
     }
   }
@@ -136,6 +146,16 @@ The `WithReference` method configures a connection to a bucket in the `MyService
 ```csharp
 builder.AddCouchbaseClient("mybucket");
 ```
+
+## Health Checks
+
+By default, health checks are enabled with the following configuration:
+
+- Active, not passive
+- Only check the Key/Value data service
+- Require at least one healthy node, and allow no unhealthy nodes-
+
+These defaults can be overridden using configuration providers or inline delegates as described in the Configuration section above.
 
 ## Additional documentation
 
