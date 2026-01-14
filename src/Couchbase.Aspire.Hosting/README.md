@@ -36,7 +36,10 @@ The Couchbase cluster resource exposes the following connection properties:
 | ------------- | ----------- |
 | `Username` | The username for authentication |
 | `Password` | The password for authentication |
-| `Uri` | The connection URI, with the format `couchbase://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}` or `couchbases://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}` |
+| `Uri` | The connection URI, with the format `couchbase://{Host}:{Port},{Host2}:{Port}` or `couchbases://{Host}:{Port},{Host2}:{Port}` |
+
+The `ConnectionString` property is also available, which exposes all properties as a single string in the format `couchbase://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}`.
+
 
 ### Couchbase bucket
 
@@ -46,8 +49,10 @@ The Couchbase bucket resource exposes the following connection properties:
 | ------------- | ----------- |
 | `Username` | The username for authentication |
 | `Password` | The password for authentication |
-| `Uri` | The connection URI, with the format `couchbase://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}/{BucketName}` or `couchbases://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}/{BucketName}` |
+| `Uri` | The connection URI, with the format `couchbase://{Host}:{Port},{Host2}:{Port}` or `couchbases://{Host}:{Port},{Host2}:{Port}` |
 | `BucketName` | The name of the bucket |
+
+The `ConnectionString` property is also available, which exposes all properties as a single string in the format `couchbase://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}/{BucketName}`.
 
 ## Feedback & contributing
 

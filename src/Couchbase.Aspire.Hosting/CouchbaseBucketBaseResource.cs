@@ -36,7 +36,7 @@ public abstract class CouchbaseBucketBaseResource(string name, string bucketName
     public ReferenceExpression BucketNameExpression => ReferenceExpression.Create($"{BucketName}");
 
     /// <summary>
-    /// Gets the connection URI expression for the Couchbase bucket.
+    /// Gets the connection string expression for the Couchbase bucket.
     /// </summary>
     /// <remarks>
     /// Format: <c>couchbase://{user}:{password}@{host}:{port}/{bucketName}</c>.

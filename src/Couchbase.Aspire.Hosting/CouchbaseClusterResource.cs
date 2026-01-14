@@ -54,28 +54,35 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
     public ParameterResource PasswordParameter { get; }
 
     /// <summary>
-    /// Gets the connection URI expression for the Couchbase server.
+    /// Gets the connection string expression for the Couchbase server.
     /// </summary>
+    /// <remarks>
+    /// Format: <c>couchbase://{user}:{password}@{host}:{port}</c>.
+    /// </remarks>
     public ReferenceExpression ConnectionStringExpression => BuildConnectionString();
 
     /// <summary>
     /// Gets the connection URI expression for the Couchbase server.
     /// </summary>
     /// <remarks>
-    /// Format: <c>couchbase://{user}:{password}@{host}:{port}</c>.
+    /// Format: <c>couchbase://{host}:{port}</c>.
     /// </remarks>
-    public ReferenceExpression UriExpression => BuildConnectionString();
+    public ReferenceExpression UriExpression => BuildConnectionString(includeAuthentication: false);
 
-    internal ReferenceExpression BuildConnectionString(string? bucketName = null)
+    internal ReferenceExpression BuildConnectionString(string? bucketName = null, bool includeAuthentication = true)
     {
         var useSsl = this.HasAnnotationOfType<CouchbaseCertificateAuthorityAnnotation>();
 
         var builder = new ReferenceExpressionBuilder();
         builder.AppendLiteral(useSsl ? "couchbases://" : "couchbase://");
-        builder.AppendFormatted(UserNameReference);
-        builder.AppendLiteral(":");
-        builder.AppendFormatted(PasswordParameter);
-        builder.AppendLiteral("@");
+
+        if (includeAuthentication)
+        {
+            builder.AppendFormatted(UserNameReference);
+            builder.AppendLiteral(":");
+            builder.AppendFormatted(PasswordParameter, "uri");
+            builder.AppendLiteral("@");
+        }
 
         var servers = _serverGroups.Values
             .Where(p => p.Services.HasFlag(CouchbaseServices.Data))
