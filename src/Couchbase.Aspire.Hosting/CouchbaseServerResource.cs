@@ -12,19 +12,15 @@ public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironme
 
         ManagementEndpoint = new EndpointReference(this, CouchbaseEndpointNames.Management);
         ManagementSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.ManagementSecure);
-
-        if (parent.Services.HasFlag(CouchbaseServices.Data))
-        {
-            DataEndpoint = new EndpointReference(this, CouchbaseEndpointNames.Data);
-            DataSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.DataSecure);
-        }
+        DataEndpoint = new EndpointReference(this, CouchbaseEndpointNames.Data);
+        DataSecureEndpoint = new EndpointReference(this, CouchbaseEndpointNames.DataSecure);
     }
 
     public CouchbaseServerGroupResource Parent { get; }
 
     public CouchbaseClusterResource Cluster => Parent.Parent;
 
-    public CouchbaseServices Services => Parent.Services;
+    private bool HasDataService => Parent.GetCouchbaseServices().HasFlag(CouchbaseServices.Data);
 
     // There is currently no public API to get the node name, the value resolution process
     // simply hangs. The APIs used for resolving injected environment variables, where this value
@@ -39,7 +35,7 @@ public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironme
     /// <summary>
     /// Gets the data endpoint for this resource.
     /// </summary>
-    public EndpointReference? DataEndpoint { get; }
+    public EndpointReference DataEndpoint { get; }
 
     /// <summary>
     /// Gets the secure management endpoint for this resource.
@@ -59,10 +55,10 @@ public class CouchbaseServerResource : ContainerResource, IResourceWithEnvironme
     /// <summary>
     /// Gets the data host and port endpoint reference for this resource.
     /// </summary>
-    public EndpointReferenceExpression? DataHostAndPort => DataEndpoint?.Property(EndpointProperty.HostAndPort);
+    public EndpointReferenceExpression? DataHostAndPort => HasDataService ? DataEndpoint.Property(EndpointProperty.HostAndPort) : null;
 
     /// <summary>
     /// Gets the secure data host and port endpoint reference for this resource.
     /// </summary>
-    public EndpointReferenceExpression? DataSecureHostAndPort => DataSecureEndpoint?.Property(EndpointProperty.HostAndPort);
+    public EndpointReferenceExpression? DataSecureHostAndPort => HasDataService ? DataSecureEndpoint?.Property(EndpointProperty.HostAndPort) : null;
 }

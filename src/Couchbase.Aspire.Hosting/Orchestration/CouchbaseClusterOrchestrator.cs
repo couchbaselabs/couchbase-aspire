@@ -467,7 +467,7 @@ internal sealed class CouchbaseClusterOrchestrator
         {
             resourceLogger.LogInformation("Adding node {NodeName} to cluster '{ClusterName}'...", addServer.Name, primaryServer.Cluster.Name);
 
-            await api.AddNodeAsync(primaryServer, addServer.NodeName, addServer.Services, cancellationToken).ConfigureAwait(false);
+            await api.AddNodeAsync(primaryServer, addServer.NodeName, addServer.GetCouchbaseServices(), cancellationToken).ConfigureAwait(false);
 
             added = true;
         }

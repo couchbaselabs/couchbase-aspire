@@ -48,6 +48,28 @@ internal static class CouchbaseResourceExtensions
             : CouchbaseIndexStorageMode.ForestDB);
     }
 
+    public static CouchbaseServices GetCouchbaseServices(this ICouchbaseCustomResource resource)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        CouchbaseServices services = CouchbaseServices.Default;
+        if (resource.TryGetLastAnnotation<CouchbaseServicesAnnotation>(out var annotation))
+        {
+            services = annotation.Services;
+        }
+
+        return services == CouchbaseServices.Default
+            ? CouchbaseServicesAnnotation.DefaultServices
+            : services;
+    }
+
+    public static CouchbaseServices GetCouchbaseServices(this CouchbaseServerResource server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+
+        return server.Parent.GetCouchbaseServices();
+    }
+
     public static Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> GetHealthCheckServiceRequirements(this CouchbaseClusterResource cluster)
     {
         ArgumentNullException.ThrowIfNull(cluster);
@@ -56,7 +78,7 @@ internal static class CouchbaseResourceExtensions
         var enabledServices = CouchbaseServices.Data;
         foreach (var serverGroup in cluster.ServerGroups.Values)
         {
-            enabledServices |= serverGroup.Services;
+            enabledServices |= serverGroup.GetCouchbaseServices();
         }
 
         static Dictionary<ServiceType, List<ICouchbaseServiceHealthRequirement>> GetServiceList(CouchbaseServices services)
@@ -78,7 +100,7 @@ internal static class CouchbaseResourceExtensions
             {
                 result.Add(ServiceType.Analytics, [CouchbaseServiceHealthNodeRequirement.OneHealthyNode]);
             }
-            if (services.HasFlag(CouchbaseServices.Fts))
+            if (services.HasFlag(CouchbaseServices.Search))
             {
                 result.Add(ServiceType.Search, [CouchbaseServiceHealthNodeRequirement.OneHealthyNode]);
             }

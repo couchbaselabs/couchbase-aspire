@@ -16,10 +16,12 @@ var couchbase = builder.AddCouchbase("couchbase", password: couchbasePassword)
 // var certificate = Aspire.Test.AppHost.Helpers.LoadCACertificate("CouchbaseCA.pfx");
 // couchbase.WithRootCertificationAuthority(certificate, trustCertificate: true);
 
-var couchbaseGroup1 = couchbase.AddServerGroup("couchbase-group1", CouchbaseServices.Data | CouchbaseServices.Query | CouchbaseServices.Index | CouchbaseServices.Fts)
+var couchbaseGroup1 = couchbase.AddServerGroup("couchbase-group1")
+    .WithServices(CouchbaseServices.Data | CouchbaseServices.Query | CouchbaseServices.Index | CouchbaseServices.Search)
     .WithReplicas(2);
 
-var couchbaseGroup2 = couchbase.AddServerGroup("couchbase-group2", CouchbaseServices.Analytics | CouchbaseServices.Eventing)
+var couchbaseGroup2 = couchbase.AddServerGroup("couchbase-group2")
+    .WithServices(CouchbaseServices.Analytics | CouchbaseServices.Eventing)
     .WithReplicas(2);
 
 var testBucket = couchbase.AddBucket("test-bucket", bucketName: "test")

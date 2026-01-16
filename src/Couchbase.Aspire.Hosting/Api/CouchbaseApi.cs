@@ -76,7 +76,7 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
             { "indexMemoryQuota", quotas.IndexServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
             { "ftsMemoryQuota", quotas.FtsServiceMegabytes.ToString(CultureInfo.InvariantCulture) },
             { "indexerStorageMode", GetEnumValueString(cluster.GetIndexStorageMode()) },
-            { "services", BuildServicesString(server.Services) },
+            { "services", BuildServicesString(server.GetCouchbaseServices()) },
             { "port", "SAME" },
         };
 
@@ -443,7 +443,7 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
         AppendIfSet(CouchbaseServices.Data, "kv");
         AppendIfSet(CouchbaseServices.Query, "n1ql");
         AppendIfSet(CouchbaseServices.Index, "index");
-        AppendIfSet(CouchbaseServices.Fts, "fts");
+        AppendIfSet(CouchbaseServices.Search, "fts");
         AppendIfSet(CouchbaseServices.Analytics, "cbas");
         AppendIfSet(CouchbaseServices.Eventing, "eventing");
         AppendIfSet(CouchbaseServices.Backup, "backup");

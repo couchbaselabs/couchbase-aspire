@@ -6,18 +6,12 @@ namespace Couchbase.Aspire.Hosting;
 public static class CouchbaseServerGroupBuilderExtensions
 {
     public static IResourceBuilder<CouchbaseServerGroupResource> AddServerGroup(this IResourceBuilder<CouchbaseClusterResource> builder,
-        [ResourceName] string name,
-        CouchbaseServices services = CouchbaseServices.Default)
+        [ResourceName] string name)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        if (services == CouchbaseServices.Default)
-        {
-            services = CouchbaseServices.Data | CouchbaseServices.Query | CouchbaseServices.Index;
-        }
-
-        var serverGroup = new CouchbaseServerGroupResource(name, builder.Resource, services);
+        var serverGroup = new CouchbaseServerGroupResource(name, builder.Resource);
         builder.Resource.AddServerGroup(name, serverGroup);
 
         var serverGroupBuilder = builder.ApplicationBuilder.AddResource(serverGroup)
@@ -50,16 +44,6 @@ public static class CouchbaseServerGroupBuilderExtensions
             {
                 builder.ApplicationBuilder.Resources.Remove(server);
             }
-
-            if (!builder.Resource.Parent.HasPrimaryServer())
-            {
-                // Find a new initial node
-                var newPrimaryServer = builder.Resource.Parent.Servers.FirstOrDefault(p => p.Services.HasFlag(CouchbaseServices.Data));
-                if (newPrimaryServer is not null)
-                {
-                    builder.ApplicationBuilder.CreateResourceBuilder(newPrimaryServer).WithPrimaryServerConfiguration();
-                }
-            }
         }
         else
         {
@@ -67,6 +51,52 @@ public static class CouchbaseServerGroupBuilderExtensions
             {
                 builder.AddServer($"{builder.Resource.Name}-{i}");
             }
+        }
+
+        builder.ApplicationBuilder.CreateResourceBuilder(builder.Resource.Parent)
+            .UpdatePrimaryServer();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Specify the Couchbase services to be enabled on servers in this server group.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase server group.</param>
+    /// <param name="services">The services to be enabled.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseServerGroupResource> WithServices(this IResourceBuilder<CouchbaseServerGroupResource> builder,
+        CouchbaseServices services)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        if (services == CouchbaseServices.Default)
+        {
+            services = CouchbaseServicesAnnotation.DefaultServices;
+        }
+
+        if (builder.Resource.TryGetLastAnnotation<CouchbaseServicesAnnotation>(out var existingAnnotation))
+        {
+            if (existingAnnotation.Services == services)
+            {
+                // No change
+                return builder;
+            }
+
+            existingAnnotation.Services = services;
+        }
+        else
+        {
+            builder.WithAnnotation(new CouchbaseServicesAnnotation(services));
+        }
+
+        builder.ApplicationBuilder.CreateResourceBuilder(builder.Resource.Parent)
+            .UpdatePrimaryServer();
+
+        foreach (var server in builder.Resource.Servers)
+        {
+            builder.ApplicationBuilder.CreateResourceBuilder(server)
+                .ApplyDynamicConfiguration();
         }
 
         return builder;

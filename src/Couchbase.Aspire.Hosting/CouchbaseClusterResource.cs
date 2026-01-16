@@ -85,7 +85,7 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
         }
 
         var servers = _serverGroups.Values
-            .Where(p => p.Services.HasFlag(CouchbaseServices.Data))
+            .Where(p => p.GetCouchbaseServices().HasFlag(CouchbaseServices.Data))
             .SelectMany(p => p.Servers);
 
         var first = true;

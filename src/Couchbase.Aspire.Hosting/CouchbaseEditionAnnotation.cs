@@ -15,46 +15,97 @@ internal sealed class CouchbaseEditionAnnotation : IResourceAnnotation
         switch (edition)
         {
             case CouchbaseEdition.Enterprise:
-                if (builder.Resource.GetEndpoints().Any(CouchbaseEndpointNames.IsSecureEndpoint))
+                var services = builder.Resource.GetCouchbaseServices();
+
+                builder.WithEndpoint(CouchbaseEndpointNames.ManagementSecure, endpoint =>
                 {
-                    // Secure endpoints already exist
-                    break;
-                }
-
-                var services = builder.Resource.Services;
-
-                builder.WithEndpoint(targetPort: 18091, name: CouchbaseEndpointNames.ManagementSecure, scheme: "https");
+                    endpoint.Port = null; // Clear setting from CouchbasePortsAnnotation, it will be reapplied
+                    endpoint.TargetPort = 18091;
+                    endpoint.UriScheme = "https";
+                });
 
                 if (services.HasFlag(CouchbaseServices.Data))
                 {
-                    builder
-                        .WithEndpoint(targetPort: 11207, name: CouchbaseEndpointNames.DataSecure, scheme: "couchbases")
-                        .WithEndpoint(targetPort: 18092, name: CouchbaseEndpointNames.ViewsSecure, scheme: "https");
+                    builder.WithEndpoint(CouchbaseEndpointNames.DataSecure, endpoint =>
+                    {
+                        endpoint.TargetPort = 11207;
+                        endpoint.UriScheme = "couchbases";
+                    });
+
+                    builder.WithEndpoint(CouchbaseEndpointNames.ViewsSecure, endpoint =>
+                    {
+                        endpoint.TargetPort = 18092;
+                        endpoint.UriScheme = "https";
+                    });
+                }
+                else
+                {
+                    builder.WithoutEndpoints(CouchbaseEndpointNames.DataSecure, CouchbaseEndpointNames.ViewsSecure);
                 }
 
                 if (services.HasFlag(CouchbaseServices.Query))
                 {
-                    builder.WithEndpoint(targetPort: 18093, name: CouchbaseEndpointNames.QuerySecure, scheme: "https");
+                    builder.WithEndpoint(CouchbaseEndpointNames.QuerySecure, endpoint =>
+                    {
+                        endpoint.TargetPort = 18093;
+                        endpoint.UriScheme = "https";
+                    });
+                }
+                else
+                {
+                    builder.WithoutEndpoints(CouchbaseEndpointNames.QuerySecure);
                 }
 
-                if (services.HasFlag(CouchbaseServices.Fts))
+                if (services.HasFlag(CouchbaseServices.Search))
                 {
-                    builder.WithEndpoint(targetPort: 18094, name: CouchbaseEndpointNames.FtsSecure, scheme: "https");
+                    builder.WithEndpoint(CouchbaseEndpointNames.FtsSecure, endpoint =>
+                    {
+                        endpoint.TargetPort = 18094;
+                        endpoint.UriScheme = "https";
+                    });
+                }
+                else
+                {
+                    builder.WithoutEndpoints(CouchbaseEndpointNames.FtsSecure);
                 }
 
                 if (services.HasFlag(CouchbaseServices.Analytics))
                 {
-                    builder.WithEndpoint(targetPort: 18095, name: CouchbaseEndpointNames.AnalyticsSecure, scheme: "https");
+                    builder.WithEndpoint(CouchbaseEndpointNames.AnalyticsSecure, endpoint =>
+                    {
+                        endpoint.TargetPort = 18095;
+                        endpoint.UriScheme = "https";
+                    });
+                }
+                else
+                {
+                    builder.WithoutEndpoints(CouchbaseEndpointNames.AnalyticsSecure);
                 }
 
                 if (services.HasFlag(CouchbaseServices.Eventing))
                 {
-                    builder.WithEndpoint(targetPort: 18096, name: CouchbaseEndpointNames.EventingSecure, scheme: "https");
+                    builder.WithEndpoint(CouchbaseEndpointNames.EventingSecure, endpoint =>
+                    {
+                        endpoint.TargetPort = 18096;
+                        endpoint.UriScheme = "https";
+                    });
+                }
+                else
+                {
+                    builder.WithoutEndpoints(CouchbaseEndpointNames.EventingSecure);
                 }
 
                 if (services.HasFlag(CouchbaseServices.Backup))
                 {
-                    builder.WithEndpoint(targetPort: 18097, name: CouchbaseEndpointNames.BackupSecure, scheme: "https");
+                    builder.WithEndpoint(CouchbaseEndpointNames.BackupSecure, endpoint =>
+                    {
+                        endpoint.TargetPort = 18097;
+                        endpoint.UriScheme = "https";
+                    });
+                }
+                else
+                {
+                    builder.WithoutEndpoints(CouchbaseEndpointNames.BackupSecure);
                 }
                 break;
 

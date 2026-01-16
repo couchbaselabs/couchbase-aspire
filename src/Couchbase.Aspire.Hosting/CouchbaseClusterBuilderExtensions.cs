@@ -501,6 +501,42 @@ public static partial class CouchbaseClusterBuilderExtensions
             .UpdateExistingServers();
     }
 
+    internal static IResourceBuilder<CouchbaseClusterResource> UpdatePrimaryServer(this IResourceBuilder<CouchbaseClusterResource> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        var primaryServer = builder.Resource.GetPrimaryServer();
+        if (primaryServer is not null && !primaryServer.GetCouchbaseServices().HasFlag(CouchbaseServices.Data))
+        {
+            // Primary server no longer has data service, remove primary server configuration
+            if (primaryServer.TryGetAnnotationsOfType<CouchbasePrimaryServerAnnotation>(out var annotations))
+            {
+                foreach (var annotation in annotations)
+                {
+                    primaryServer.Annotations.Remove(annotation);
+                }
+            }
+
+            // Re-apply dynamic configuration
+            builder.ApplicationBuilder.CreateResourceBuilder(primaryServer).ApplyDynamicConfiguration();
+
+            primaryServer = null;
+        }
+
+        if (primaryServer is null)
+        {
+            // Find a new primary server
+            primaryServer = builder.Resource.Servers.FirstOrDefault(p => p.GetCouchbaseServices().HasFlag(CouchbaseServices.Data));
+            if (primaryServer is not null)
+            {
+                builder.ApplicationBuilder.CreateResourceBuilder(primaryServer)
+                    .WithAnnotation<CouchbasePrimaryServerAnnotation>()
+                    .ApplyDynamicConfiguration();
+            }
+        }
+
+        return builder;
+    }
 
     private static IResourceBuilder<CouchbaseClusterResource> UpdateExistingServers(this IResourceBuilder<CouchbaseClusterResource> builder)
     {
@@ -509,7 +545,7 @@ public static partial class CouchbaseClusterBuilderExtensions
         foreach (var server in builder.Resource.Servers)
         {
             var serverBuilder = builder.ApplicationBuilder.CreateResourceBuilder(server);
-            serverBuilder.WithClusterConfiguration();
+            serverBuilder.ApplyDynamicConfiguration();
         }
 
         return builder;
