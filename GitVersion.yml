@@ -1,2 +1,0 @@
-workflow: GitHubFlow/v1
-tag-prefix: release/[vV]?
