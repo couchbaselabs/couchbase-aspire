@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # Required for NuGet OIDC authentication
+      packages: write
 
     steps:
     - name: Checkout
@@ -26,18 +27,44 @@ jobs:
         dotnet-version: |
           10.0.x
 
-    - name: Install GitVersion
-      uses: gittools/actions/gitversion/setup@v4
-      with:
-        versionSpec: "6.4.0"
+    - name: Get version
+      id: get-version
+      run: |
+        if [ "${{ github.ref_type }}" = "tag" ]; then
+          # Strip 'release/v' prefix if present
+          VERSION=${GITHUB_REF_NAME#release/v}
+          PACKAGE_VERSION=$VERSION
+        else
+          # Get latest tag from history, fallback to 1.0.0 if none exist
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "release/v1.0.0")
 
-    - name: Determine Version
-      id: gitversion
-      uses: gittools/actions/gitversion/execute@v4
-      with:
-        configFilePath: "GitVersion.yml"
+          # Strip 'release/v' and split into Major.Minor.Patch
+          CLEAN_TAG=${LATEST_TAG#release/v}
+          IFS='.' read -r MAJOR MINOR RAW_PATCH <<< "$CLEAN_TAG"
 
-    # Cache packages for faster subsequent runs
+          # Strip everything after the first digit in the patch (removes -beta, -rc, etc.)
+          # This ensures "3-rc.1" becomes just "3"
+          PATCH=${RAW_PATCH%%[!0-9]*}
+
+          # Increment Patch by 1
+          NEW_PATCH=$((PATCH + 1))
+
+          VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Append the PR number and build number
+            PACKAGE_VERSION="$VERSION-PullRequest.${{ github.event.pull_request.number }}.${{ github.run_number }}"
+          else
+            # Append the branch and build number
+            PACKAGE_VERSION="$VERSION-Branch.${{ github.ref_name }}.${{ github.run_number }}"
+          fi
+        fi
+
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+        echo "INFORMATIONAL_VERSION=$PACKAGE_VERSION+${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      # Cache packages for faster subsequent runs
     - uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
@@ -49,10 +76,10 @@ jobs:
       run: dotnet restore
 
     - name: Build
-      run: dotnet build --no-restore -c Release /p:Version=${{ steps.gitversion.outputs.semVer }}
+      run: dotnet build --no-restore -c Release /p:Version=${{ steps.get-version.outputs.VERSION }} /p:InformationalVersion=${{ steps.get-version.outputs.INFORMATIONAL_VERSION }}
 
     - name: Pack
-      run: dotnet pack --no-build -c Release /p:PackageVersion=${{ steps.gitversion.outputs.fullSemVer  }}
+      run: dotnet pack --no-build -c Release /p:PackageVersion=${{ steps.get-version.outputs.PACKAGE_VERSION }}
     - name: Upload Package Artifact
       uses: actions/upload-artifact@v6
       with:
@@ -67,7 +94,13 @@ jobs:
       with:
         user: ${{ vars.NUGET_USER }}
 
-    - name: Push
-      # Publish tagged releases
+    - name: Push to NuGet.org
+      # Publish tagged releases to NuGet.org
       if: ${{ startsWith(github.ref, 'refs/tags/release/') }}
       run: dotnet nuget push artifacts/package/release/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+    - name: Push to GitHub Packages
+      # Publish CI releases to GitHub packages
+      if: ${{ !startsWith(github.ref, 'refs/tags/release/') }}
+      run: |
+        dotnet nuget add source https://nuget.pkg.github.com/couchbaselabs/index.json --name github --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text
+        dotnet nuget push artifacts/package/release/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source github
