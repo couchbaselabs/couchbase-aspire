@@ -11,10 +11,17 @@ public class CouchbaseServerGroupResource : Resource, ICouchbaseCustomResource, 
         Parent = parent;
     }
 
+    internal CouchbaseServerGroupResource(string name, CouchbaseClusterResource parent, bool isDefaultServerGroup) : this(name, parent)
+    {
+        IsDefaultServerGroup = isDefaultServerGroup;
+    }
+
     /// <summary>
     /// Gets the parent Couchbase Server container resource.
     /// </summary>
     public CouchbaseClusterResource Parent { get; }
+
+    internal bool IsDefaultServerGroup { get; }
 
     private readonly List<CouchbaseServerResource> _servers = [];
 

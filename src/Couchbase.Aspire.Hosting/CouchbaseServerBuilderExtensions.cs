@@ -19,7 +19,7 @@ internal static class CouchbaseServerBuilderExtensions
         var server = new CouchbaseServerResource(name, builder.Resource);
         builder.Resource.AddServer(server);
 
-        return builder.ApplicationBuilder.AddResource(server)
+        var serverBuilder = builder.ApplicationBuilder.AddResource(server)
             .WithParentRelationship(builder)
             .WithImage(CouchbaseContainerImageTags.Image, CouchbaseContainerImageTags.Tag)
             .WithImageRegistry(CouchbaseContainerImageTags.Registry)
@@ -62,9 +62,25 @@ internal static class CouchbaseServerBuilderExtensions
                     }
                 }
             })
+
             .WithNodeCertificate()
             .ExcludeFromManifest()
             .ApplyDynamicConfiguration();
+
+        // Hide the server if the server group is the default server group, which is also hidden
+        if (builder.Resource.IsDefaultServerGroup)
+        {
+            serverBuilder.OnInitializeResource(async (resource, @event, ct) =>
+             {
+                 var rns = @event.Services.GetRequiredService<ResourceNotificationService>();
+                 await rns.PublishUpdateAsync(resource, s => s with
+                 {
+                     IsHidden = true
+                 }).ConfigureAwait(false);
+             });
+        }
+
+        return serverBuilder;
     }
 
     private static IResourceBuilder<CouchbaseServerResource> ApplyInsecureEndpoints(this IResourceBuilder<CouchbaseServerResource> builder)

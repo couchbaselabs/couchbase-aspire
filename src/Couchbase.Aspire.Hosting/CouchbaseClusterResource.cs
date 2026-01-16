@@ -128,6 +128,11 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
         _serverGroups.TryAdd(name, serverGroup);
     }
 
+    internal bool RemoveServerGroup(string name)
+    {
+        return _serverGroups.Remove(name);
+    }
+
     public IEnumerable<CouchbaseServerResource> Servers => _serverGroups.Values.SelectMany(g => g.Servers);
 
     private readonly Dictionary<string, CouchbaseBucketBaseResource> _buckets = new(StringComparer.OrdinalIgnoreCase);

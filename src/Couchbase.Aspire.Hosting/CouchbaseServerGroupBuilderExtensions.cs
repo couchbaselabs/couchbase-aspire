@@ -6,12 +6,30 @@ namespace Couchbase.Aspire.Hosting;
 public static class CouchbaseServerGroupBuilderExtensions
 {
     public static IResourceBuilder<CouchbaseServerGroupResource> AddServerGroup(this IResourceBuilder<CouchbaseClusterResource> builder,
-        [ResourceName] string name)
+        [ResourceName] string name) =>
+        builder.AddServerGroup(name, isDefaultServerGroup: false);
+
+    internal static IResourceBuilder<CouchbaseServerGroupResource> AddServerGroup(this IResourceBuilder<CouchbaseClusterResource> builder,
+        [ResourceName] string name,
+        bool isDefaultServerGroup)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        var serverGroup = new CouchbaseServerGroupResource(name, builder.Resource);
+        var defaultServerGroup = builder.Resource.ServerGroups.FirstOrDefault(p => p.Value.IsDefaultServerGroup);
+        if (defaultServerGroup.Key is not null)
+        {
+            // We're adding manual server groups, remove the default one
+            builder.Resource.RemoveServerGroup(defaultServerGroup.Key);
+
+            builder.ApplicationBuilder.Resources.Remove(defaultServerGroup.Value);
+            foreach (var server in defaultServerGroup.Value.Servers)
+            {
+                builder.ApplicationBuilder.Resources.Remove(server);
+            }
+        }
+
+        var serverGroup = new CouchbaseServerGroupResource(name, builder.Resource, isDefaultServerGroup);
         builder.Resource.AddServerGroup(name, serverGroup);
 
         var serverGroupBuilder = builder.ApplicationBuilder.AddResource(serverGroup)
@@ -20,6 +38,7 @@ public static class CouchbaseServerGroupBuilderExtensions
                 ResourceType = "CouchbaseServerGroup",
                 CreationTimeStamp = DateTime.UtcNow,
                 State = KnownResourceStates.NotStarted,
+                IsHidden = isDefaultServerGroup,
                 Properties =
                 [
                     new(CustomResourceKnownProperties.Source, "Couchbase")

@@ -113,7 +113,7 @@ public static partial class CouchbaseClusterBuilderExtensions
                 serviceRequirementsFactory: _ => cluster.GetHealthCheckServiceRequirements(),
                 name: healthCheckKey);
 
-        return builder.AddResource(cluster)
+        var clusterBuilder = builder.AddResource(cluster)
             .WithInitialState(new()
             {
                 ResourceType = "CouchbaseCluster",
@@ -146,6 +146,49 @@ public static partial class CouchbaseClusterBuilderExtensions
                         DisplayText = displayText,
                         Endpoint = endpoint,
                     });
+                }
+            })
+            .OnInitializeResource(async (resource, @event, ct) =>
+            {
+                // Ensure we display the Docker image as the Source for the cluster
+
+                var server = resource.GetPrimaryServer();
+                if (server is not null)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        var rns = @event.Services.GetRequiredService<ResourceNotificationService>();
+
+                        await foreach (var @event in rns.WatchAsync(ct).ConfigureAwait(false))
+                        {
+                            if (@event.Resource == server)
+                            {
+                                var serverSource = @event.Snapshot.Properties
+                                   .FirstOrDefault(p => p.Name == "container.image")?
+                                   .Value;
+
+                                if (serverSource is not null)
+                                {
+                                    await rns.PublishUpdateAsync(resource, s =>
+                                    {
+                                        var currentSource = s.Properties.FirstOrDefault(p => p.Name == CustomResourceKnownProperties.Source);
+
+                                        if (serverSource != currentSource?.Value)
+                                        {
+                                            return s with
+                                            {
+                                                Properties =
+                                                    (currentSource is not null ? s.Properties.Remove(currentSource) : s.Properties)
+                                                    .Add(new(CustomResourceKnownProperties.Source, serverSource))
+                                            };
+                                        }
+
+                                        return s;
+                                    });
+                                }
+                            }
+                        }
+                    }, ct);
                 }
             })
             .WithCommand(KnownResourceCommands.StartCommand, "Start", async (context) =>
@@ -207,6 +250,33 @@ public static partial class CouchbaseClusterBuilderExtensions
                 IconVariant = IconVariant.Filled,
                 IsHighlighted = true,
             });
+
+        // Add the default single node server group
+        clusterBuilder.AddServerGroup($"{name}-server", isDefaultServerGroup: true);
+
+        return clusterBuilder;
+    }
+
+    /// <summary>
+    /// Specify the Couchbase services to be enabled on this cluster. Only applies if no server groups are added.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="services">The services to be enabled.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithServices(this IResourceBuilder<CouchbaseClusterResource> builder,
+        CouchbaseServices services)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        var serverGroup = builder.Resource.ServerGroups.Values.FirstOrDefault(p => p.IsDefaultServerGroup);
+        if (serverGroup is null)
+        {
+            throw new InvalidOperationException("Services may only be set on the Couchbase cluster when no service groups are added. Use WithServices on the server group instead.");
+        }
+
+        builder.ApplicationBuilder.CreateResourceBuilder(serverGroup).WithServices(services);
+
+        return builder;
     }
 
     public static IResourceBuilder<CouchbaseClusterResource> WithSettings(this IResourceBuilder<CouchbaseClusterResource> builder, Action<CouchbaseClusterSettingsCallbackContext> configureSettings)

@@ -128,14 +128,13 @@ Then, in the _AppHost.cs_ file of your project, register a Couchbase cluster and
 
 ```csharp
 var couchbase = builder.AddCouchbase("couchbase");
-var servers = couchbase.AddServerGroup("couchbase_servers");
-var bucket = servers.AddBucket("mybucket");
+var bucket = couchbase.AddBucket("mybucket");
 
 var myService = builder.AddProject<Projects.MyService>()
     .WithReference(bucket)
     .WaitFor(bucket);
 
-// Altertively, reference the cluster rather than a specific bucket, INamedBucketProvider will not be registered in DI
+// Alternatively, reference the cluster rather than a specific bucket, INamedBucketProvider will not be registered in DI
 var myService2 = builder.AddProject<Projects.MyService>()
     .WithReference(couchbase)
     .WaitFor(couchbase);

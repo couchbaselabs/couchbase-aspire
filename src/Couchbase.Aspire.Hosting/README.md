@@ -12,12 +12,33 @@ dotnet add package Couchbase.Aspire.Hosting
 
 ## Usage example
 
-In the _AppHost.cs_ file of your `AppHost`, add a Couchbase cluster resource and consume the connection using the following methods:
+In the _AppHost.cs_ file of your `AppHost`, add a Couchbase cluster resource with the data, query, and index services
+and consume the connection using the following methods:
 
 ```csharp
 var couchbase = builder.AddCouchbase("couchbase");
-var servers = couchbase.AddServerGroup("couchbase_servers");
-var bucket = servers.AddBucket("mybucket");
+var bucket = couchbase.AddBucket("mybucket");
+
+var myService = builder.AddProject<Projects.MyService>()
+    .WithReference(bucket)
+    .WaitFor(bucket);
+```
+
+### Multi-dimensional scaling example
+
+It is also possible to run a multiple server cluster with various services assigned to different server groups:
+
+```csharp
+var couchbase = builder.AddCouchbase("couchbase");
+var bucket1 = couchbase.AddBucket("bucket1");
+
+var group1 = couchbase.AddServerGroup("couchbase-group1")
+    .WithServices(CouchbaseServices.Data)
+    .WithReplicas(2);
+
+var group2 = couchbase.AddServerGroup("couchbase-group2")
+    .WithServices(CouchbaseServices.Index | CouchbaseServices.Query)
+    .WithReplicas(2);
 
 var myService = builder.AddProject<Projects.MyService>()
     .WithReference(bucket)
@@ -39,7 +60,6 @@ The Couchbase cluster resource exposes the following connection properties:
 | `Uri` | The connection URI, with the format `couchbase://{Host}:{Port},{Host2}:{Port}` or `couchbases://{Host}:{Port},{Host2}:{Port}` |
 
 The `ConnectionString` property is also available, which exposes all properties as a single string in the format `couchbase://{Username}:{Password}@{Host}:{Port},{Host2}:{Port}`.
-
 
 ### Couchbase bucket
 
