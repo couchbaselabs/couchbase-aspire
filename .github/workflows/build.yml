@@ -93,7 +93,13 @@ jobs:
       with:
         user: ${{ vars.NUGET_USER }}
 
-    - name: Push
-      # Publish tagged releases
+    - name: Push to NuGet.org
+      # Publish tagged releases to NuGet.org
       if: ${{ startsWith(github.ref, 'refs/tags/release/') }}
       run: dotnet nuget push artifacts/package/release/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+    - name: Push to GitHub Packages
+      # Publish CI releases to GitHub packages
+      if: ${{ !startsWith(github.ref, 'refs/tags/release/') }}
+      run: |
+        dotnet nuget add source https://nuget.pkg.github.com/couchbaselabs/index.json --name github --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }}
+        dotnet nuget push artifacts/package/release/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source github
