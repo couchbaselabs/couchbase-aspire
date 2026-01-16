@@ -1,0 +1,31 @@
+# Deletes pr-related CI builds of packages
+name: Cleanup packages
+
+on:
+  schedule:
+  - cron: '21 0 * * 6'
+  workflow_dispatch:
+
+jobs:
+  clean-pr-packages:
+
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+    - uses: actions/delete-package-versions@v5
+      with:
+        package-type: nuget
+        package-name: Couchbase.Aspire.Hosting
+        min-versions-to-keep: 100
+    - uses: actions/delete-package-versions@v5
+      with:
+        package-type: nuget
+        package-name: Couchbase.Aspire.Client
+        min-versions-to-keep: 100
+    - uses: actions/delete-package-versions@v5
+      with:
+        package-type: nuget
+        package-name: Couchbase.HealthChecks
+        min-versions-to-keep: 100
