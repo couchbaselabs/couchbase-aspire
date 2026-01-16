@@ -52,10 +52,10 @@ jobs:
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             # Append the PR number and build number
-            PACKAGE_VERSION="1.0.0-PullRequest.${{ github.event.pull_request.number }}.${{ github.run_number }}"
+            PACKAGE_VERSION="$VERSION-PullRequest.${{ github.event.pull_request.number }}.${{ github.run_number }}"
           else
             # Append the branch and build number
-            PACKAGE_VERSION="1.0.0-Branch.${{ github.ref_name }}.${{ github.run_number }}"
+            PACKAGE_VERSION="$VERSION-Branch.${{ github.ref_name }}.${{ github.run_number }}"
           fi
         fi
 
