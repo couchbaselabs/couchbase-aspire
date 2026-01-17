@@ -321,6 +321,20 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
         return (await response.Content.ReadFromJsonAsync<SampleBucketResponse>(cancellationToken).ConfigureAwait(false))!;
     }
 
+    public async Task FlushBucketAsync(CouchbaseServerResource server, string bucketName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentException.ThrowIfNullOrEmpty(bucketName);
+
+        var response = await SendRequestAsync(server.GetManagementEndpoint(),
+            HttpMethod.Post,
+            $"/pools/default/buckets/{bucketName}/controller/doFlush",
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<List<ClusterTask>> GetClusterTasksAsync(CouchbaseServerResource server, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);

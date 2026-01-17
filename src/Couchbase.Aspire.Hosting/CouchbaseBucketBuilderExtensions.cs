@@ -1,6 +1,7 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Couchbase.Aspire.Hosting;
+using Couchbase.Aspire.Hosting.Api;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Microsoft.Extensions.DependencyInjection;
@@ -207,11 +208,78 @@ public static class CouchbaseBucketBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.WithSettings(context =>
+        builder.WithSettings(context =>
         {
             context.Settings.FlushEnabled = enabled;
             return Task.CompletedTask;
         });
+
+        const string flushCommandName = "flush-bucket";
+        if (enabled ?? false)
+        {
+            // Add a command to flush the bucket
+            builder.WithCommand(flushCommandName, "Flush",
+                async (context) =>
+                {
+                    var apiService = context.ServiceProvider.GetRequiredService<ICouchbaseApiService>();
+                    var api = apiService.GetApi(builder.Resource.Parent);
+
+                    var server = builder.Resource.Parent.GetPrimaryServer();
+                    if (server is null)
+                    {
+                        return new ExecuteCommandResult
+                        {
+                            Success = false,
+                            ErrorMessage = "No available server to flush the bucket."
+                        };
+                    }
+
+                    await api.FlushBucketAsync(server, builder.Resource.BucketName, context.CancellationToken).ConfigureAwait(false);
+
+                    // Wait for bucket to be healthy
+                    while (true)
+                    {
+                        context.CancellationToken.ThrowIfCancellationRequested();
+
+                        var bucketInfo = await api.GetBucketAsync(server, builder.Resource.BucketName, context.CancellationToken).ConfigureAwait(false);
+                        if (bucketInfo?.Nodes?.All(p => p.Status == BucketNode.HealthyStatus) ?? false)
+                        {
+                            break;
+                        }
+
+                        await Task.Delay(250, context.CancellationToken).ConfigureAwait(false);
+                    }
+
+                    return new ExecuteCommandResult { Success = true };
+                },
+                new CommandOptions
+                {
+                    UpdateState = context =>
+                    {
+                        var state = context.ResourceSnapshot.State?.Text;
+                        return state == KnownResourceStates.Running
+                            ? ResourceCommandState.Enabled
+                            : ResourceCommandState.Hidden;
+                    },
+                    IconName = "DeleteLines",
+                    IsHighlighted = true,
+                    ConfirmationMessage = $"Flushing bucket '{builder.Resource.BucketName}', are you sure?",
+                });
+        }
+        else
+        {
+            // Remove the command if it was previously added
+            var existingCommand = builder.Resource.Annotations
+                .OfType<ResourceCommandAnnotation>()
+                .FirstOrDefault(p => p.Name == flushCommandName);
+
+            if (existingCommand is not null)
+            {
+                builder.Resource.Annotations.Remove(existingCommand);
+            }
+        }
+
+        return builder;
     }
 
     /// <summary>
