@@ -463,33 +463,29 @@ internal sealed class CouchbaseClusterOrchestrator
 
     public async Task WaitForServicesAsync(ICouchbaseApi api, CouchbaseServerResource server, CancellationToken cancellationToken = default)
     {
+        if (!server.TryGetEndpoints(out var endpoints))
+        {
+            throw new InvalidOperationException("Failed to get node endpoints.");
+        }
+
+        var expectedServiceNames = endpoints
+            .Select(endpoint => CouchbaseEndpointNames.EndpointNameServiceMappings.TryGetValue(endpoint.Name, out var serviceName)
+                ? serviceName
+                : null!)
+            .Where(serviceName => serviceName is not null)
+            .ToHashSet();
+
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            if (!server.TryGetEndpoints(out var endpoints))
-            {
-                throw new InvalidOperationException("Failed to get node endpoints.");
-            }
 
             var node = await api.GetNodeServicesAsync(server, cancellationToken).ConfigureAwait(false);
 
             if (node.Services is not null)
             {
-                var allServicesFound = true;
-                foreach (var endpoint in endpoints)
-                {
-                    if (CouchbaseEndpointNames.EndpointNameServiceMappings.TryGetValue(endpoint.Name, out var serviceName))
-                    {
-                        if (!node.Services.ContainsKey(serviceName))
-                        {
-                            allServicesFound = false;
-                            break;
-                        }
-                    }
-                }
+                var nodeServiceNames = node.Services.Keys.ToHashSet();
 
-                if (allServicesFound)
+                if (nodeServiceNames.IsSupersetOf(expectedServiceNames))
                 {
                     return;
                 }
