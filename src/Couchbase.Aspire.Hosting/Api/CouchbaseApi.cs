@@ -129,12 +129,27 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
         };
 
         var response = await SendRequestAsync(server.GetManagementEndpoint(),
-                HttpMethod.Post,
-                "/controller/addNode",
-                new FormUrlEncodedContent(parameters),
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+            HttpMethod.Post,
+            "/controller/addNode",
+            new FormUrlEncodedContent(parameters),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<NodeServices> GetNodeServicesAsync(CouchbaseServerResource server, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+
+        var response = await SendRequestAsync(server.GetManagementEndpoint(),
+            HttpMethod.Get,
+            "pools/default/nodeServices",
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+
+        var nodeServicesResponse = await response.Content.ReadFromJsonAsync<NodeServicesResponse>(cancellationToken).ConfigureAwait(false);
+        return nodeServicesResponse!.NodesExt.First(p => p.ThisNode);
     }
 
     public async Task SetupAlternateAddressesAsync(CouchbaseServerResource server, string hostname, Dictionary<string, string> ports,

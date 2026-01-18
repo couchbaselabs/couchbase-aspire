@@ -382,6 +382,14 @@ internal sealed class CouchbaseClusterOrchestrator
                         await RebalanceAsync(api, primaryServer, cancellationToken).ConfigureAwait(false);
                     }
                 }
+                else
+                {
+                    // A single node cluster may not have all services come online immediately, which can result in
+                    // health checks that never pass when the SDK bootstraps with a subset of services. Wait for
+                    // all services to appear in the ports list
+
+                    await WaitForServicesAsync(api, primaryServer, cancellationToken).ConfigureAwait(false);
+                }
 
                 await _orchestratorEvents.PublishAsync(new OnCouchbaseResourceStartedEvent(cluster), cancellationToken).ConfigureAwait(false);
 
@@ -451,6 +459,44 @@ internal sealed class CouchbaseClusterOrchestrator
         var settings = await primaryServer.Cluster.GetClusterSettingsAsync(_executionContext, cancellationToken).ConfigureAwait(false);
 
         await api.InitializeClusterAsync(primaryServer, settings, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task WaitForServicesAsync(ICouchbaseApi api, CouchbaseServerResource server, CancellationToken cancellationToken = default)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!server.TryGetEndpoints(out var endpoints))
+            {
+                throw new InvalidOperationException("Failed to get node endpoints.");
+            }
+
+            var node = await api.GetNodeServicesAsync(server, cancellationToken).ConfigureAwait(false);
+
+            if (node.Services is not null)
+            {
+                var allServicesFound = true;
+                foreach (var endpoint in endpoints)
+                {
+                    if (CouchbaseEndpointNames.EndpointNameServiceMappings.TryGetValue(endpoint.Name, out var serviceName))
+                    {
+                        if (!node.Services.ContainsKey(serviceName))
+                        {
+                            allServicesFound = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (allServicesFound)
+                {
+                    return;
+                }
+            }
+
+            await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <returns><c>true</c> if the node was added, <c>false</c> if it is already part of the cluster.</returns>

@@ -9,6 +9,7 @@ internal interface ICouchbaseApi
     Task<Bucket?> GetBucketAsync(CouchbaseServerResource server, string bucketName, CancellationToken cancellationToken);
     Task FlushBucketAsync(CouchbaseServerResource server, string bucketName, CancellationToken cancellationToken);
     Task<Pool> GetClusterNodesAsync(CouchbaseServerResource server, CancellationToken cancellationToken = default);
+    Task<NodeServices> GetNodeServicesAsync(CouchbaseServerResource server, CancellationToken cancellationToken = default);
     Task<bool> GetDefaultPoolAsync(CouchbaseServerResource server, bool preferInsecure = false, CancellationToken cancellationToken = default);
     Task<RebalanceStatus> GetRebalanceProgressAsync(CouchbaseServerResource server, CancellationToken cancellationToken = default);
     Task InitializeClusterAsync(CouchbaseServerResource server, CouchbaseClusterSettings settings, CancellationToken cancellationToken = default);
