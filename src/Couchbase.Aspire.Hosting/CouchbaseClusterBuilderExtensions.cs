@@ -64,7 +64,9 @@ public static partial class CouchbaseClusterBuilderExtensions
         string? connectionString = null;
         builder.Eventing.Subscribe<ConnectionStringAvailableEvent>(cluster, async (@event, ct) =>
         {
-            connectionString = await cluster.ConnectionStringExpression.GetValueAsync(ct).ConfigureAwait(false);
+            // Use the URI, not the connection string, since it is applied directly to ClusterOptions
+            // The URI doesn't include the Aspire extensions for authentication
+            connectionString = await cluster.UriExpression.GetValueAsync(ct).ConfigureAwait(false);
 
             if (connectionString is null)
             {

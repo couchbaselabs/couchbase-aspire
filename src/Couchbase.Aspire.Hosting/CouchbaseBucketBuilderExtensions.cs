@@ -64,7 +64,9 @@ public static class CouchbaseBucketBuilderExtensions
         string? connectionString = null;
         builder.ApplicationBuilder.Eventing.Subscribe<ConnectionStringAvailableEvent>(bucket.Cluster, async (@event, ct) =>
         {
-            connectionString = await bucket.Cluster.ConnectionStringExpression.GetValueAsync(ct).ConfigureAwait(false);
+            // Use the URI, not the connection string, since it is applied directly to ClusterOptions
+            // The URI doesn't include the Aspire extensions for authentication
+            connectionString = await bucket.Cluster.UriExpression.GetValueAsync(ct).ConfigureAwait(false);
 
             if (connectionString is null)
             {
