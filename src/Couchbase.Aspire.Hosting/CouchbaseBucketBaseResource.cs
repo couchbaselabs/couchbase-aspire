@@ -16,14 +16,14 @@ internal interface ICouchbaseBucketResource<TSelf> where TSelf : ICouchbaseBucke
 /// </summary>
 /// <param name="name">The unique name of the resource instance.</param>
 /// <param name="bucketName">The name of the Couchbase bucket represented by this resource.</param>
-/// <param name="parent">The parent Couchbase cluster resource that hosts this bucket.</param>
-public abstract class CouchbaseBucketBaseResource(string name, string bucketName, CouchbaseClusterResource parent)
+/// <param name="cluster">The parent Couchbase cluster resource that hosts this bucket.</param>
+public abstract class CouchbaseBucketBaseResource(string name, string bucketName, CouchbaseClusterResource cluster)
     : Resource(name), IResourceWithWaitSupport, IResourceWithConnectionString, ICouchbaseCustomResource
 {
     /// <summary>
     /// Gets the parent Couchbase Server container resource.
     /// </summary>
-    public CouchbaseClusterResource Parent { get; } = parent ?? throw new ArgumentNullException(nameof(parent));
+    public CouchbaseClusterResource Cluster { get; } = cluster ?? throw new ArgumentNullException(nameof(cluster));
 
     /// <summary>
     /// Gets the database name.
@@ -41,10 +41,10 @@ public abstract class CouchbaseBucketBaseResource(string name, string bucketName
     /// <remarks>
     /// Format: <c>couchbase://{user}:{password}@{host}:{port}/{bucketName}</c>.
     /// </remarks>
-    public ReferenceExpression ConnectionStringExpression => Parent.BuildConnectionString(BucketName);
+    public ReferenceExpression ConnectionStringExpression => Cluster.BuildConnectionString(BucketName);
 
     IEnumerable<KeyValuePair<string, ReferenceExpression>> IResourceWithConnectionString.GetConnectionProperties() =>
-        Parent.CombineProperties([
+        Cluster.CombineProperties([
             new("BucketName", BucketNameExpression)
         ]);
 

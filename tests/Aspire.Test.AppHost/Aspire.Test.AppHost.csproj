@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Aspire.Test.WebApp\Aspire.Test.WebApp.csproj" />
     <ProjectReference Include="..\..\src\Couchbase.Aspire.Hosting\Couchbase.Aspire.Hosting.csproj" IsAspireProjectResource="false" />
+    <ProjectReference Include="..\..\src\Couchbase.Aspire.Hosting.Indices\Couchbase.Aspire.Hosting.Indices.csproj" IsAspireProjectResource="false" />
   </ItemGroup>
 
 </Project>

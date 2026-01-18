@@ -30,7 +30,8 @@ var testBucket = couchbase.AddBucket("test-bucket", bucketName: "test")
     .WithMinimumDurabilityLevel(DurabilityLevel.MajorityAndPersistToActive)
     .WithEvictionPolicy(EvictionPolicyType.FullEviction)
     .WithCompressionMode(CompressionMode.Active)
-    .WithReplicas(0);
+    .WithReplicas(0)
+    .WithIndices("test-indices");
 
 var cacheBucket = couchbase.AddBucket("cache-bucket", bucketName: "cache")
     .WithBucketType(BucketType.Ephemeral)

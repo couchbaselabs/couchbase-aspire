@@ -62,13 +62,13 @@ public static class CouchbaseBucketBuilderExtensions
         builder.Resource.AddBucket(name, bucket);
 
         string? connectionString = null;
-        builder.ApplicationBuilder.Eventing.Subscribe<ConnectionStringAvailableEvent>(bucket.Parent, async (@event, ct) =>
+        builder.ApplicationBuilder.Eventing.Subscribe<ConnectionStringAvailableEvent>(bucket.Cluster, async (@event, ct) =>
         {
-            connectionString = await bucket.Parent.ConnectionStringExpression.GetValueAsync(ct).ConfigureAwait(false);
+            connectionString = await bucket.Cluster.ConnectionStringExpression.GetValueAsync(ct).ConfigureAwait(false);
 
             if (connectionString is null)
             {
-                throw new DistributedApplicationException($"ConnectionStringAvailableEvent was published for the '{bucket.Parent.Name}' resource but the connection string was null.");
+                throw new DistributedApplicationException($"ConnectionStringAvailableEvent was published for the '{bucket.Cluster.Name}' resource but the connection string was null.");
             }
         });
 
@@ -79,7 +79,7 @@ public static class CouchbaseBucketBuilderExtensions
                     var options = new ClusterOptions()
                         .WithConnectionString(connectionString ?? throw new InvalidOperationException("Connection string is unavailable"));
 
-                    var cluster = bucket.Parent;
+                    var cluster = bucket.Cluster;
                     options.UserName = await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false);
                     options.Password = await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false);
 
@@ -98,7 +98,7 @@ public static class CouchbaseBucketBuilderExtensions
                     return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
                 },
                 bucketNameFactory: _ => bucket.BucketName,
-                serviceRequirementsFactory: _ => bucket.Parent.GetHealthCheckServiceRequirements(),
+                serviceRequirementsFactory: _ => bucket.Cluster.GetHealthCheckServiceRequirements(),
                 name: healthCheckKey);
 
         return builder.ApplicationBuilder
@@ -222,9 +222,9 @@ public static class CouchbaseBucketBuilderExtensions
                 async (context) =>
                 {
                     var apiService = context.ServiceProvider.GetRequiredService<ICouchbaseApiService>();
-                    var api = apiService.GetApi(builder.Resource.Parent);
+                    var api = apiService.GetApi(builder.Resource.Cluster);
 
-                    var server = builder.Resource.Parent.GetPrimaryServer();
+                    var server = builder.Resource.Cluster.GetPrimaryServer();
                     if (server is null)
                     {
                         return new ExecuteCommandResult

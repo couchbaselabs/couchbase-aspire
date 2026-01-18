@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(DefaultTargetFramework)</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageTags>aspire integration hosting Couchbase database data indexes indices</PackageTags>
+    <Description>Couchbase Index Manager support for Aspire.</Description>
+    <RootNamespace>Couchbase.Aspire.Hosting</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Couchbase.Aspire.Hosting\Couchbase.Aspire.Hosting.csproj" />
+  </ItemGroup>
+
+</Project>

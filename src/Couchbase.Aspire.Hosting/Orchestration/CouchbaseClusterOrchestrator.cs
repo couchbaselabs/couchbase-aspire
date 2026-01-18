@@ -569,7 +569,7 @@ internal sealed class CouchbaseClusterOrchestrator
 
     private async Task InitializeBucketAsync(CouchbaseBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken = default)
     {
-        var node = bucket.Parent.GetPrimaryServer();
+        var node = bucket.Cluster.GetPrimaryServer();
         if (node is null)
         {
             throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");
@@ -577,7 +577,7 @@ internal sealed class CouchbaseClusterOrchestrator
 
         resourceLogger.LogInformation("Creating bucket '{BucketName}'...", bucket.BucketName);
 
-        var api = _apiService.GetApi(bucket.Parent);
+        var api = _apiService.GetApi(bucket.Cluster);
 
         var bucketInfo = await api.GetBucketAsync(node, bucket.BucketName, cancellationToken).ConfigureAwait(false);
         if (bucketInfo is not null)
@@ -608,7 +608,7 @@ internal sealed class CouchbaseClusterOrchestrator
 
     private async Task InitializeSampleBucketAsync(CouchbaseSampleBucketResource bucket, ILogger resourceLogger, CancellationToken cancellationToken = default)
     {
-        var server = bucket.Parent.GetPrimaryServer();
+        var server = bucket.Cluster.GetPrimaryServer();
         if (server is null)
         {
             throw new InvalidOperationException("Couchbase cluster must have at least one server with the data service.");
@@ -616,7 +616,7 @@ internal sealed class CouchbaseClusterOrchestrator
 
         resourceLogger.LogInformation("Creating sample bucket '{BucketName}'...", bucket.BucketName);
 
-        var api = _apiService.GetApi(bucket.Parent);
+        var api = _apiService.GetApi(bucket.Cluster);
 
         var bucketInfo = await api.GetBucketAsync(server, bucket.BucketName, cancellationToken).ConfigureAwait(false);
         if (bucketInfo is not null)

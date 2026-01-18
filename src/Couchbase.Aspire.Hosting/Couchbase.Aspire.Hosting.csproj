@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <TargetFramework>$(DefaultTargetFramework)</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageTags>aspire integration hosting Couchbase database data</PackageTags>
+    <Description>Couchbase support for Aspire.</Description>
   </PropertyGroup>
 
   <ItemGroup>

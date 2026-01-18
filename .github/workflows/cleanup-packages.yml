@@ -22,6 +22,11 @@ jobs:
     - uses: actions/delete-package-versions@v5
       with:
         package-type: nuget
+        package-name: Couchbase.Aspire.Hosting.Indices
+        min-versions-to-keep: 100
+    - uses: actions/delete-package-versions@v5
+      with:
+        package-type: nuget
         package-name: Couchbase.Aspire.Client
         min-versions-to-keep: 100
     - uses: actions/delete-package-versions@v5
