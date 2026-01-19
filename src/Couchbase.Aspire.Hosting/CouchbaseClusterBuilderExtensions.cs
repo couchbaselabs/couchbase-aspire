@@ -101,9 +101,7 @@ public static partial class CouchbaseClusterBuilderExtensions
                     var certificationAuthority = cluster.GetClusterCertificationAuthority();
                     if (certificationAuthority is { TrustCertificate: true })
                     {
-                        var callback = certificationAuthority.CreateValidationCallback();
-                        options.HttpCertificateCallbackValidation = callback;
-                        options.KvCertificateCallbackValidation = callback;
+                        options.WithX509CertificateFactory(certificationAuthority);
                     }
 
                     // Only need one connection per node for health checks

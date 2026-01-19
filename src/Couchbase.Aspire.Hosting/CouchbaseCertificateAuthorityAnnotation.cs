@@ -1,13 +1,15 @@
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using Aspire.Hosting.ApplicationModel;
+using Couchbase.Core.IO.Authentication.X509;
 
 namespace Couchbase.Aspire.Hosting;
 
 /// <summary>
 /// Provides a custom certification authority for Couchbase clusters.
 /// </summary>
-public class CouchbaseCertificateAuthorityAnnotation(X509Certificate2 caCertificate) : IResourceAnnotation
+public class CouchbaseCertificateAuthorityAnnotation(X509Certificate2 caCertificate) : IResourceAnnotation,
+    ICertificateFactory
 {
     /// <summary>
     /// CA certificate for the Couchbase cluster.
@@ -18,7 +20,7 @@ public class CouchbaseCertificateAuthorityAnnotation(X509Certificate2 caCertific
     /// Chain of additional certificates which support the CA certificate, up to and including the root certificate.
     /// Only required if the certificate is not a root certificate.
     /// </summary>
-    public X509Certificate2Collection CertificateChain { get; } = [];
+    public X509Certificate2Collection CertificateChain { get; } = [caCertificate];
 
     /// <summary>
     /// Gets or sets if the certificate must be explicitly trusted for initialization and health check operations.
@@ -27,6 +29,8 @@ public class CouchbaseCertificateAuthorityAnnotation(X509Certificate2 caCertific
     /// Defaults to <c>false</c>.
     /// </value>
     public bool TrustCertificate { get; set; }
+
+    X509Certificate2Collection ICertificateFactory.GetCertificates() => CertificateChain;
 
     internal RemoteCertificateValidationCallback CreateValidationCallback()
     {
