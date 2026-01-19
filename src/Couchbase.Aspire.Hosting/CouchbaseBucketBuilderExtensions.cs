@@ -389,4 +389,48 @@ public static class CouchbaseBucketBuilderExtensions
             return Task.CompletedTask;
         });
     }
+
+    /// <summary>
+    /// Adds a scope to the Couchbase bucket.
+    /// </summary>
+    /// <param name="builder">The bucket builder.</param>
+    /// <param name="scopeName">Name of the scope.</param>
+    /// <param name="collections">List of collection names to be created within the scope.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseBucketResource> WithScope(this IResourceBuilder<CouchbaseBucketResource> builder, string scopeName,
+        IEnumerable<string>? collections = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(scopeName);
+
+        CouchbaseScopeAnnotation? annotation = null;
+        if (builder.Resource.TryGetAnnotationsOfType<CouchbaseScopeAnnotation>(out var annotations))
+        {
+            annotation = annotations.FirstOrDefault(p => p.ScopeName == scopeName);
+        }
+
+        if (annotation is null)
+        {
+            annotation = new CouchbaseScopeAnnotation(scopeName);
+
+            if (collections is not null)
+            {
+                annotation.CollectionNames = [.. collections];
+            }
+
+            builder.WithAnnotation(annotation);
+        }
+        else if (collections is not null)
+        {
+            foreach (var collectionName in collections)
+            {
+                if (!annotation.CollectionNames.Contains(collectionName))
+                {
+                    annotation.CollectionNames.Add(collectionName);
+                }
+            }
+        }
+
+        return builder;
+    }
 }

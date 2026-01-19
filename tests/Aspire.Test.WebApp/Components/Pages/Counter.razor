@@ -28,7 +28,7 @@
         try
         {
             var bucket = await BucketProvider.GetBucketAsync();
-            var collection = bucket.DefaultCollection();
+            var collection = bucket.Scope("test-scope").Collection("counter");
 
             var result = await collection.GetAsync("counter", new Couchbase.KeyValue.GetOptions()
                 .Transcoder(new Couchbase.Core.IO.Transcoders.LegacyTranscoder()));
@@ -50,7 +50,7 @@
         try
         {
             var bucket = await BucketProvider.GetBucketAsync();
-            var collection = bucket.DefaultCollection();
+            var collection = bucket.Scope("test-scope").Collection("counter");
 
             try
             {

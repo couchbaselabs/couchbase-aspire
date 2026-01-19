@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 
@@ -28,7 +26,7 @@ public abstract class CouchbaseBucketBaseResource(string name, string bucketName
     /// <summary>
     /// Gets the database name.
     /// </summary>
-    public string BucketName { get; } = ThrowIfNullOrEmpty(bucketName);
+    public string BucketName { get; } = ThrowHelpers.ThrowIfNullOrEmpty(bucketName);
 
     /// <summary>
     /// Gets the bucket name expression for the Couchbase bucket.
@@ -47,10 +45,4 @@ public abstract class CouchbaseBucketBaseResource(string name, string bucketName
         Cluster.CombineProperties([
             new("BucketName", BucketNameExpression)
         ]);
-
-    private static string ThrowIfNullOrEmpty([NotNull] string? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(argument, paramName);
-        return argument;
-    }
 }

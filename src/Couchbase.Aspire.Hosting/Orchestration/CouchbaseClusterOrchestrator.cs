@@ -632,6 +632,31 @@ internal sealed class CouchbaseClusterOrchestrator
             await api.CreateBucketAsync(node, bucket.BucketName, settings, cancellationToken).ConfigureAwait(false);
         }
 
+        // Create scopes and collections that don't already exist
+        if (bucket.TryGetAnnotationsOfType<CouchbaseScopeAnnotation>(out var scopes))
+        {
+            var currentScopes = await api.GetScopesAsync(node, bucket.BucketName, cancellationToken).ConfigureAwait(false);
+
+            foreach (var scope in scopes)
+            {
+                var currentScope = currentScopes.Scopes.FirstOrDefault(p => p.Name == scope.ScopeName);
+                if (currentScope is null)
+                {
+                    resourceLogger.LogInformation("Creating scope '{ScopeName}'...", scope.ScopeName);
+                    await api.CreateScopeAsync(node, bucket.BucketName, scope.ScopeName, cancellationToken).ConfigureAwait(false);
+                }
+
+                foreach (var collectionName in scope.CollectionNames)
+                {
+                    if (currentScope?.Collections.FirstOrDefault(p => p.Name == collectionName) is null)
+                    {
+                        resourceLogger.LogInformation("Creating collection '{ScopeName}.{CollectionName}'...", scope.ScopeName, collectionName);
+                        await api.CreateCollectionAsync(node, bucket.BucketName, scope.ScopeName, collectionName, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
+
         // Wait for bucket to be healthy
         resourceLogger.LogInformation("Waiting for bucket '{BucketName}' to be healthy...", bucket.BucketName);
         while (!cancellationToken.IsCancellationRequested)

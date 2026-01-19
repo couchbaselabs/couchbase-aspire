@@ -30,3 +30,24 @@ internal sealed class SampleBucketTask
     [JsonPropertyName("taskId")]
     public string? TaskId { get; set; }
 }
+
+internal sealed class ScopesResponse
+{
+    [JsonPropertyName("scopes")]
+    public List<Scope> Scopes { get; set; } = [];
+}
+
+internal sealed class Scope
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("collections")]
+    public List<Collection> Collections { get; set; } = [];
+}
+
+internal sealed class Collection
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+}

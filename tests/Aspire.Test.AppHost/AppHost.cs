@@ -20,6 +20,7 @@ var couchbaseGroup2 = couchbase.AddServerGroup("couchbase-group2")
     .WithReplicas(2);
 
 var testBucket = couchbase.AddBucket("test-bucket", bucketName: "test")
+    .WithScope("test-scope", ["counter"])
     .WithMemoryQuota(200) // Optional memory quota, default is 100MB
     .WithConflictResolutionType(ConflictResolutionType.Timestamp)
     .WithMinimumDurabilityLevel(DurabilityLevel.MajorityAndPersistToActive)

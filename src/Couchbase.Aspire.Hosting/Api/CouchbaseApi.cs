@@ -350,6 +350,53 @@ internal sealed class CouchbaseApi(CouchbaseClusterResource cluster, HttpClient 
         await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<ScopesResponse> GetScopesAsync(CouchbaseServerResource server, string bucketName, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentException.ThrowIfNullOrEmpty(bucketName);
+
+        var response = await SendRequestAsync(server.GetManagementEndpoint(),
+            HttpMethod.Get,
+            $"/pools/default/buckets/{bucketName}/scopes",
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+
+        return (await response.Content.ReadFromJsonAsync<ScopesResponse>(cancellationToken).ConfigureAwait(false))!;
+    }
+
+    public async Task CreateScopeAsync(CouchbaseServerResource server, string bucketName, string scopeName, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentException.ThrowIfNullOrEmpty(bucketName);
+        ArgumentException.ThrowIfNullOrEmpty(scopeName);
+
+        var response = await SendRequestAsync(server.GetManagementEndpoint(),
+            HttpMethod.Post,
+            $"/pools/default/buckets/{bucketName}/scopes",
+            content: new FormUrlEncodedContent([new("name", scopeName)]),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task CreateCollectionAsync(CouchbaseServerResource server, string bucketName, string scopeName, string collectionName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentException.ThrowIfNullOrEmpty(bucketName);
+        ArgumentException.ThrowIfNullOrEmpty(scopeName);
+        ArgumentException.ThrowIfNullOrEmpty(collectionName);
+
+        var response = await SendRequestAsync(server.GetManagementEndpoint(),
+            HttpMethod.Post,
+            $"/pools/default/buckets/{bucketName}/scopes/{scopeName}/collections",
+            content: new FormUrlEncodedContent([new("name", collectionName)]),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await ThrowOnFailureAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<List<ClusterTask>> GetClusterTasksAsync(CouchbaseServerResource server, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
