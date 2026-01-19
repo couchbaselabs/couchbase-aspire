@@ -46,6 +46,28 @@ var myService = builder.AddProject<Projects.MyService>()
 Index definition files are JSON or YAML files that define the indexes to be created on a Couchbase bucket. They may be referenced by directory
 or by individual file. See [couchbase-index-manager Documentation](https://github.com/brantburnett/couchbase-index-manager/tree/main/packages/couchbase-index-manager-cli#definition-files) for details on the file format.
 
+## Using with a secure Couchbase cluster
+
+If your Couchbase cluster uses TLS/SSL, you may need to configure the index manager to trust the cluster's certificate.
+
+```csharp
+var certAuthorityCollection = builder.AddCertificateAuthorityCollection("couchbase-cert-authority")
+    .WithCertificate(certificateWithPrivateKey);
+
+var couchbase = builder.AddCouchbase("couchbase");
+var bucket = couchbase.AddBucket("mybucket")
+    .WithRootCertificateAuthority(certAuthorityCollection); // Use the certificate for the Couchbase cluster
+
+var bucketIndices = bucket.AddIndexManager("mybucket-indices")
+    .WithIndices("../indices")
+    .WithCertificateAuthorityCollection(certAuthorityCollection); // Trust the certificate for index management
+
+var myService = builder.AddProject<Projects.MyService>()
+    .WithReference(bucket)
+    .WaitFor(bucket)
+    .WaitForCompletion(bucketIndices);
+```
+
 ## Feedback & contributing
 
 https://github.com/couchbaselabs/couchbase-aspire

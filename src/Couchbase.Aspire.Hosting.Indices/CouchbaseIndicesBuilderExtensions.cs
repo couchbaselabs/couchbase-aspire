@@ -82,7 +82,7 @@ public static class CouchbaseBucketBuilderExtensions
             }
             catch (IOException ex)
             {
-                throw new DistributedApplicationException($"Index definition path '{path}' is invalid.", ex);
+                throw new InvalidOperationException($"Index definition path '{path}' is invalid.", ex);
             }
         }
 

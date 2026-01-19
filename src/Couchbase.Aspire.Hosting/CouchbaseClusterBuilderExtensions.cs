@@ -531,6 +531,32 @@ public static partial class CouchbaseClusterBuilderExtensions
     }
 
     /// <summary>
+    /// Enables TLS for cluster communications using a root certification authority.
+    /// </summary>
+    /// <param name="builder">Builder for the couchbase cluster.</param>
+    /// <param name="certAuthorityCollection">Collection that includes the certificate. Must include a private key.</param>
+    /// <param name="trustCertificate">If the certificate must be explicitly trusted for initialization and health check operations.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    /// <remarks>
+    /// The root certificate must be trusted by any application connecting to the cluster. It must also be trusted
+    /// by the host running Aspire if <paramref name="trustCertificate"/> is <c>false</c>.
+    /// </remarks>
+    public static IResourceBuilder<CouchbaseClusterResource> WithRootCertificationAuthority(this IResourceBuilder<CouchbaseClusterResource> builder,
+        IResourceBuilder<CertificateAuthorityCollection> certAuthorityCollection, bool trustCertificate = false)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(certAuthorityCollection);
+
+        var certificate = certAuthorityCollection.Resource.Certificates.FirstOrDefault(p => p.HasPrivateKey);
+        if (certificate is null)
+        {
+            throw new InvalidOperationException($"{nameof(certAuthorityCollection)} must include a certificate with a private key.");
+        }
+
+        return builder.WithRootCertificationAuthority(certificate, trustCertificate: trustCertificate);
+    }
+
+    /// <summary>
     /// Sets the lifetime behavior of the Couchbase cluster.
     /// </summary>
     /// <param name="builder">Builder for the Couchbase cluster.</param>

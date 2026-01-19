@@ -1,6 +1,7 @@
 using Couchbase.Aspire.Hosting;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
+using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -8,13 +9,7 @@ var couchbasePassword = builder.AddParameter("couchbase-password", "password", s
 
 var couchbase = builder.AddCouchbase("couchbase", password: couchbasePassword)
     .WithManagementPort(8091) // Optional fixed port number for the primary node
-    .WithSecureManagementPort(18091) // Optional fixed port number for the primary node
     .WithCouchbaseEdition(CouchbaseEdition.Enterprise); // Optional edition, default is Enterprise
-
-// Uncomment this section to test building a secure cluster. Note that the test web app will not be
-// able to connect unless the certificate is trusted on the host machine.
-// var certificate = Aspire.Test.AppHost.Helpers.LoadCACertificate("CouchbaseCA.pfx");
-// couchbase.WithRootCertificationAuthority(certificate, trustCertificate: true);
 
 var couchbaseGroup1 = couchbase.AddServerGroup("couchbase-group1")
     .WithServices(CouchbaseServices.Data | CouchbaseServices.Query | CouchbaseServices.Index | CouchbaseServices.Search)
@@ -30,7 +25,9 @@ var testBucket = couchbase.AddBucket("test-bucket", bucketName: "test")
     .WithMinimumDurabilityLevel(DurabilityLevel.MajorityAndPersistToActive)
     .WithEvictionPolicy(EvictionPolicyType.FullEviction)
     .WithCompressionMode(CompressionMode.Active)
-    .WithReplicas(0)
+    .WithReplicas(0);
+
+var testIndices = testBucket.AddIndexManager("test-indices")
     .WithIndices("test-indices");
 
 var cacheBucket = couchbase.AddBucket("cache-bucket", bucketName: "cache")
@@ -45,6 +42,21 @@ var sampleBucket = couchbase.AddSampleBucket("travel-sample-bucket", "travel-sam
 builder.AddProject<Projects.Aspire_Test_WebApp>("aspire-test-webapp")
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
-    .WithReference(testBucket).WaitFor(testBucket);
+    .WithReference(testBucket).WaitFor(testBucket)
+    .WaitForCompletion(testIndices);
+
+if (builder.Configuration.GetValue("COUCHBASE_SECURE", false))
+{
+    // Note that the test web app will not be able to connect unless the certificate is trusted on the host machine.
+    var certAuthorityCollection = builder.AddCertificateAuthorityCollection("couchbase-cert-authority")
+        .WithCertificate(Aspire.Test.AppHost.Helpers.LoadCACertificate("CouchbaseCA.pfx"));
+
+    couchbase
+        .WithSecureManagementPort(18091) // Optional fixed port number for the primary node
+        .WithRootCertificationAuthority(certAuthorityCollection, trustCertificate: true);
+
+    // Trust the Couchbase CA for the index manager
+    testIndices.WithCertificateAuthorityCollection(certAuthorityCollection);
+}
 
 builder.Build().Run();
