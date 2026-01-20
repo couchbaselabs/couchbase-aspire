@@ -123,22 +123,14 @@ public static class AspireCouchbaseExtensions
         if (serviceKey is null)
         {
             builder.Services.AddCouchbase(ConfigureClusterOptions);
-
-            if (!string.IsNullOrEmpty(settings.BucketName))
-            {
-                builder.Services.TryAddSingleton<INamedBucketProvider>(sp =>
-                    new BucketProvider(sp.GetRequiredService<IClusterProvider>(), settings.BucketName));
-            }
+            builder.Services.TryAddSingleton<ICouchbaseClientProvider>(sp =>
+                new CouchbaseClientProvider(sp.GetRequiredService<IClusterProvider>(), settings.BucketName));
         }
         else
         {
             builder.Services.AddKeyedCouchbase(serviceKey, ConfigureClusterOptions);
-
-            if (!string.IsNullOrEmpty(settings.BucketName))
-            {
-                builder.Services.TryAddKeyedSingleton<INamedBucketProvider>(serviceKey, (sp, serviceKey) =>
-                    new BucketProvider(sp.GetRequiredKeyedService<IClusterProvider>(serviceKey), settings.BucketName));
-            }
+            builder.Services.TryAddKeyedSingleton<ICouchbaseClientProvider>(serviceKey, (sp, serviceKey) =>
+                new CouchbaseClientProvider(sp.GetRequiredKeyedService<IClusterProvider>(serviceKey), settings.BucketName));
         }
 
         if (!settings.DisableTracing)

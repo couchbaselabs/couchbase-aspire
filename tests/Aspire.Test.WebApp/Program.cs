@@ -1,3 +1,4 @@
+using Aspire.Test.WebApp;
 using Aspire.Test.WebApp.Components;
 using Couchbase.Aspire.Client;
 
@@ -5,6 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddCouchbaseClient("test-bucket");
+builder.Services.AddSingleton<ICounterCollectionProvider, CounterCollectionProvider>();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
