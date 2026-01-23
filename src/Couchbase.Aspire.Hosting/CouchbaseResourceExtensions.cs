@@ -48,19 +48,37 @@ internal static class CouchbaseResourceExtensions
             : CouchbaseIndexStorageMode.ForestDB);
     }
 
-    public static CouchbaseServices GetCouchbaseServices(this ICouchbaseCustomResource resource)
+    private static CouchbaseServices ApplyDefaults(this CouchbaseServices services) =>
+        services == CouchbaseServices.Default
+            ? CouchbaseServicesAnnotation.DefaultServices
+            : services;
+
+    private static CouchbaseServicesAnnotation? GetCouchbaseServicesAnnotation(this ICouchbaseCustomResource resource)
     {
         ArgumentNullException.ThrowIfNull(resource);
 
-        CouchbaseServices services = CouchbaseServices.Default;
         if (resource.TryGetLastAnnotation<CouchbaseServicesAnnotation>(out var annotation))
         {
-            services = annotation.Services;
+            return annotation;
         }
 
-        return services == CouchbaseServices.Default
-            ? CouchbaseServicesAnnotation.DefaultServices
-            : services;
+        return null;
+    }
+
+    public static CouchbaseServices GetCouchbaseServices(this CouchbaseClusterResource cluster)
+    {
+        ArgumentNullException.ThrowIfNull(cluster);
+
+        return (cluster.GetCouchbaseServicesAnnotation()?.Services ?? CouchbaseServices.Default).ApplyDefaults();
+    }
+
+    public static CouchbaseServices GetCouchbaseServices(this CouchbaseServerGroupResource serverGroup)
+    {
+        ArgumentNullException.ThrowIfNull(serverGroup);
+
+        var annotation = serverGroup.GetCouchbaseServicesAnnotation() ?? serverGroup.Parent.GetCouchbaseServicesAnnotation();
+
+        return (annotation?.Services ?? CouchbaseServices.Default).ApplyDefaults();
     }
 
     public static CouchbaseServices GetCouchbaseServices(this CouchbaseServerResource server)

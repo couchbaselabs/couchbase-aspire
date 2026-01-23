@@ -258,7 +258,8 @@ public static partial class CouchbaseClusterBuilderExtensions
     }
 
     /// <summary>
-    /// Specify the Couchbase services to be enabled on this cluster. Only applies if no server groups are added.
+    /// Specify the Couchbase services to be enabled on this cluster. This is the default for any
+    /// server groups added which do not explicitly specify services.
     /// </summary>
     /// <param name="builder">Builder for the Couchbase cluster.</param>
     /// <param name="services">The services to be enabled.</param>
@@ -268,15 +269,7 @@ public static partial class CouchbaseClusterBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        var serverGroup = builder.Resource.ServerGroups.Values.FirstOrDefault(p => p.IsDefaultServerGroup);
-        if (serverGroup is null)
-        {
-            throw new InvalidOperationException("Services may only be set on the Couchbase cluster when no service groups are added. Use WithServices on the server group instead.");
-        }
-
-        builder.ApplicationBuilder.CreateResourceBuilder(serverGroup).WithServices(services);
-
-        return builder;
+        return builder.WithAnnotation(new CouchbaseServicesAnnotation(services), ResourceAnnotationMutationBehavior.Replace);
     }
 
     public static IResourceBuilder<CouchbaseClusterResource> WithSettings(this IResourceBuilder<CouchbaseClusterResource> builder, Action<CouchbaseClusterSettingsCallbackContext> configureSettings)
