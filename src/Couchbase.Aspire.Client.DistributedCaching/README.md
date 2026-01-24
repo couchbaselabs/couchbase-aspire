@@ -33,6 +33,12 @@ public ProductsController(IDistributedCache cache)
 }
 ```
 
+When using .NET 9.0 or later, you can register a `HybridCache` which caches both locally and in Couchbase. This also registers `IDistributedCache` and `ICouchbaseCache`.
+
+```csharp
+builder.AddCouchbaseHybridCache("couchbase");
+```
+
 ## Configuration
 
 The Aspire Couchbase component offers various options for configuring the database connection according to your project's requirements and conventions.

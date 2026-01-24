@@ -11,13 +11,14 @@
 
   <ItemGroup>
     <PackageReference Include="Couchbase.Extensions.Caching" />
+    <PackageReference Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))" Include="Microsoft.Extensions.Caching.Hybrid" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Couchbase.Aspire.Client\Couchbase.Aspire.Client.csproj" />
   </ItemGroup>
 
-  <Target Name="CollectBuildTransitive" >
+  <Target Name="CollectBuildTransitive">
     <ItemGroup>
       <TfmSpecificPackageFile Include="buildTransitive/any/*.targets">
         <PackagePath>buildTransitive/$(TargetFramework)</PackagePath>
