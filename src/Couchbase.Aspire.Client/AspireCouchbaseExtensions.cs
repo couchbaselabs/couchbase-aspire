@@ -33,6 +33,22 @@ public static class AspireCouchbaseExtensions
         string connectionName,
         Action<CouchbaseClientSettings>? configureSettings = null,
         Action<ClusterOptions>? configureClusterOptions = null)
+        => AddCouchbaseClientBuilder(builder, connectionName, configureSettings, configureClusterOptions);
+
+    /// <summary>
+    /// Registers <see cref="IClusterProvider"/> as a singleton in the services provided by the <paramref name="builder"/>.
+    /// Enables retries, corresponding health check, logging, and telemetry.
+    /// </summary>
+    /// <param name="builder">The <see cref="IHostApplicationBuilder" /> to read config from and add services to.</param>
+    /// <param name="connectionName">A name used to retrieve the connection string from the ConnectionStrings configuration section.</param>
+    /// <param name="configureSettings">An optional method that can be used for customizing the <see cref="CouchbaseClientSettings"/>. It's invoked after the settings are read from the configuration.</param>
+    /// <param name="configureClusterOptions">An optional method that can be used for customizing the <see cref="ClusterOptions"/>. It's invoked after the options are read from the configuration.</param>
+    /// <remarks>Reads the configuration from "Aspire:Couchbase:Client" section.</remarks>
+    public static AspireCouchbaseClientBuilder AddCouchbaseClientBuilder(
+        this IHostApplicationBuilder builder,
+        string connectionName,
+        Action<CouchbaseClientSettings>? configureSettings = null,
+        Action<ClusterOptions>? configureClusterOptions = null)
         => AddCouchbaseClient(builder, configureSettings, configureClusterOptions, connectionName, serviceKey: null);
 
     /// <summary>
@@ -49,13 +65,30 @@ public static class AspireCouchbaseExtensions
         string name,
         Action<CouchbaseClientSettings>? configureSettings = null,
         Action<ClusterOptions>? configureClusterOptions = null)
+        => AddKeyedCouchbaseClientBuilder(builder, name, configureSettings, configureClusterOptions);
+
+
+    /// <summary>
+    /// Registers <see cref="IClusterProvider"/> as a keyed singleton for the given <paramref name="name"/> in the services provided by the <paramref name="builder"/>.
+    /// Enables retries, corresponding health check, logging, and telemetry.
+    /// </summary>
+    /// <param name="builder">The <see cref="IHostApplicationBuilder" /> to read config from and add services to.</param>
+    /// <param name="name">The name of the component, which is used as the <see cref="ServiceDescriptor.ServiceKey"/> of the service and also to retrieve the connection string from the ConnectionStrings configuration section.</param>
+    /// <param name="configureSettings">An optional method that can be used for customizing the <see cref="CouchbaseClientSettings"/>. It's invoked after the settings are read from the configuration.</param>
+    /// <param name="configureClusterOptions">An optional method that can be used for customizing the <see cref="ClusterOptions"/>. It's invoked after the options are read from the configuration.</param>
+    /// <remarks>Reads the configuration from "Aspire:Couchbase:Client:{name}" section.</remarks>
+    public static AspireCouchbaseClientBuilder AddKeyedCouchbaseClientBuilder(
+        this IHostApplicationBuilder builder,
+        string name,
+        Action<CouchbaseClientSettings>? configureSettings = null,
+        Action<ClusterOptions>? configureClusterOptions = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        AddCouchbaseClient(builder, configureSettings, configureClusterOptions, connectionName: name, serviceKey: name);
+        return AddCouchbaseClient(builder, configureSettings, configureClusterOptions, connectionName: name, serviceKey: name);
     }
 
-    private static void AddCouchbaseClient(
+    private static AspireCouchbaseClientBuilder AddCouchbaseClient(
         IHostApplicationBuilder builder,
         Action<CouchbaseClientSettings>? configureSettings,
         Action<ClusterOptions>? configureClusterOptions,
@@ -210,6 +243,8 @@ public static class AspireCouchbaseExtensions
                 failureStatus: default,
                 tags: default));
         }
+
+        return new AspireCouchbaseClientBuilder(builder, settings, serviceKey);
     }
 
     private static void ApplyNodeRequirement(
