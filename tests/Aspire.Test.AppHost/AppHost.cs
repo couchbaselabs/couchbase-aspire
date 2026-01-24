@@ -44,6 +44,7 @@ builder.AddProject<Projects.Aspire_Test_WebApp>("aspire-test-webapp")
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
     .WithReference(testBucket).WaitFor(testBucket)
+    .WithReference(cacheBucket).WaitFor(cacheBucket)
     .WaitForCompletion(testIndices);
 
 if (builder.Configuration.GetValue("COUCHBASE_SECURE", false))

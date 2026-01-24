@@ -1,4 +1,7 @@
-﻿@page "/weather"
+@page "/weather"
+@using Couchbase.Extensions.Caching
+@using Microsoft.Extensions.Caching.Distributed
+@inject ICouchbaseCache Cache
 @attribute [StreamRendering]
 
 <PageTitle>Weather</PageTitle>
@@ -44,14 +47,23 @@ else
         // Simulate asynchronous loading to demonstrate streaming rendering
         await Task.Delay(500);
 
-        var startDate = DateOnly.FromDateTime(DateTime.Now);
-        var summaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
-        forecasts = Enumerable.Range(1, 5).Select(index => new WeatherForecast
+        forecasts = await Cache.GetAsync<WeatherForecast[]>("weather_forecasts");
+        if (forecasts is null)
         {
-            Date = startDate.AddDays(index),
-            TemperatureC = Random.Shared.Next(-20, 55),
-            Summary = summaries[Random.Shared.Next(summaries.Length)]
-        }).ToArray();
+            var startDate = DateOnly.FromDateTime(DateTime.Now);
+            var summaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
+            forecasts = Enumerable.Range(1, 5).Select(index => new WeatherForecast
+                {
+                    Date = startDate.AddDays(index),
+                    TemperatureC = Random.Shared.Next(-20, 55),
+                    Summary = summaries[Random.Shared.Next(summaries.Length)]
+                }).ToArray();
+
+            await Cache.SetAsync("weather_forecasts", forecasts, new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(15)
+            });
+        }
     }
 
     private class WeatherForecast

@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>$(AllTargetFrameworks)</TargetFrameworks>
+    <IsPackable>true</IsPackable>
+    <PackageTags>aspire integration client component distributedcaching distributedcache couchbase</PackageTags>
+    <Description>A Couchbase implementation for IDistributedCache that integrates with Aspire, including health checks, logging, and telemetry.</Description>
+
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectBuildTransitive</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Couchbase.Extensions.Caching" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Couchbase.Aspire.Client\Couchbase.Aspire.Client.csproj" />
+  </ItemGroup>
+
+  <Target Name="CollectBuildTransitive" >
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="buildTransitive/any/*.targets">
+        <PackagePath>buildTransitive/$(TargetFramework)</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <Content Include="ConfigurationSchema.json" Pack="True" PackagePath="." />
+    <Compile Include="../Couchbase.Aspire.Client/ConfigurationSchemaAttributes.cs" />
+  </ItemGroup>
+
+</Project>

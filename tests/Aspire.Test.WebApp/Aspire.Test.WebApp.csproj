@@ -6,9 +6,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Couchbase.Aspire.Client\Couchbase.Aspire.Client.csproj" />
+    <ProjectReference Include="..\..\src\Couchbase.Aspire.Client.DistributedCaching\Couchbase.Aspire.Client.DistributedCaching.csproj" />
     <ProjectReference Include="..\Aspire.Test.ServiceDefaults\Aspire.Test.ServiceDefaults.csproj" />
   </ItemGroup>
 
   <Import Project="..\..\src\Couchbase.Aspire.Client\buildTransitive\any\Couchbase.Aspire.Client.targets" />
+  <Import Project="..\..\src\Couchbase.Aspire.Client.DistributedCaching\buildTransitive\any\Couchbase.Aspire.Client.DistributedCaching.targets" />
 
 </Project>

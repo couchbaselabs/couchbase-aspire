@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddCouchbaseClient("test-bucket");
 builder.Services.AddSingleton<ICounterCollectionProvider, CounterCollectionProvider>();
+builder.AddCouchbaseDistributedCache("cache-bucket");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

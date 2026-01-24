@@ -1,0 +1,11 @@
+{
+  "definitions": {
+    "logLevel": {
+      "properties": {
+        "Couchbase.Extensions.Caching": {
+          "$ref": "#/definitions/logLevelThreshold"
+        }
+      }
+    }
+  }
+}
