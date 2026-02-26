@@ -61,6 +61,9 @@ public static partial class CouchbaseClusterBuilderExtensions
 
         var cluster = new CouchbaseClusterResource(name, clusterName?.Resource, userName?.Resource, passwordParameter);
 
+        // Cache the health check cluster so we don't create a new one on every health check.
+        ICluster? healthCheckCluster = null;
+
         string? connectionString = null;
         builder.Eventing.Subscribe<ConnectionStringAvailableEvent>(cluster, async (@event, ct) =>
         {
@@ -72,6 +75,9 @@ public static partial class CouchbaseClusterBuilderExtensions
             {
                 throw new DistributedApplicationException($"ConnectionStringAvailableEvent was published for the '{cluster.Name}' resource but the connection string was null.");
             }
+
+            // Dispose of the health check cluster if the connection string changes
+            Interlocked.Exchange(ref healthCheckCluster, null)?.Dispose();
         });
 
         builder.Eventing.Subscribe<BeforeStartEvent>(async (@event, ct) =>
@@ -92,6 +98,11 @@ public static partial class CouchbaseClusterBuilderExtensions
         builder.Services.AddHealthChecks()
             .AddCouchbase(
                 async (sp, ct) => {
+                    if (healthCheckCluster is ICluster localCluster)
+                    {
+                        return localCluster;
+                    }
+
                     var options = new ClusterOptions()
                         .WithConnectionString(connectionString ?? throw new InvalidOperationException("Connection string is unavailable"));
 
@@ -109,7 +120,9 @@ public static partial class CouchbaseClusterBuilderExtensions
                     options.NumKvConnections = 1;
                     options.MaxKvConnections = 1;
 
-                    return await Cluster.ConnectAsync(options, ct).ConfigureAwait(false);
+                    localCluster = await Cluster.ConnectAsync(options, ct).ConfigureAwait(false);
+                    Interlocked.Exchange(ref healthCheckCluster, localCluster)?.Dispose();
+                    return localCluster;
                 },
                 serviceRequirementsFactory: _ => cluster.GetHealthCheckServiceRequirements(),
                 name: healthCheckKey);
