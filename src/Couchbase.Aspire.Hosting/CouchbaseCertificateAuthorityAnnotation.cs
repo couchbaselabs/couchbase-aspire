@@ -8,8 +8,7 @@ namespace Couchbase.Aspire.Hosting;
 /// <summary>
 /// Provides a custom certification authority for Couchbase clusters.
 /// </summary>
-public class CouchbaseCertificateAuthorityAnnotation(X509Certificate2 caCertificate) : IResourceAnnotation,
-    ICertificateFactory
+public class CouchbaseCertificateAuthorityAnnotation(X509Certificate2 caCertificate) : IResourceAnnotation
 {
     /// <summary>
     /// CA certificate for the Couchbase cluster.
@@ -29,8 +28,6 @@ public class CouchbaseCertificateAuthorityAnnotation(X509Certificate2 caCertific
     /// Defaults to <c>false</c>.
     /// </value>
     public bool TrustCertificate { get; set; }
-
-    X509Certificate2Collection ICertificateFactory.GetCertificates() => CertificateChain;
 
     internal RemoteCertificateValidationCallback CreateValidationCallback()
     {

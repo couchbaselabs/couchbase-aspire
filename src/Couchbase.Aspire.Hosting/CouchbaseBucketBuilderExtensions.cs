@@ -82,20 +82,21 @@ public static class CouchbaseBucketBuilderExtensions
                         .WithConnectionString(connectionString ?? throw new InvalidOperationException("Connection string is unavailable"));
 
                     var cluster = bucket.Cluster;
-                    options.UserName = await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false);
-                    options.Password = await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false);
+                    options.WithPasswordAuthentication(
+                        await cluster.UserNameReference.GetValueAsync(ct).ConfigureAwait(false) ?? "",
+                        await cluster.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false) ?? "");
 
                     var certificationAuthority = cluster.GetClusterCertificationAuthority();
                     if (certificationAuthority is { TrustCertificate: true })
                     {
-                        options.WithX509CertificateFactory(certificationAuthority);
+                        options.WithTrustedServerCertificates(certificationAuthority.CertificateChain);
                     }
 
                     // Only need one connection per node for health checks
                     options.NumKvConnections = 1;
                     options.MaxKvConnections = 1;
 
-                    return await Cluster.ConnectAsync(options).WaitAsync(ct).ConfigureAwait(false);
+                    return await Cluster.ConnectAsync(options, ct).ConfigureAwait(false);
                 },
                 bucketNameFactory: _ => bucket.BucketName,
                 serviceRequirementsFactory: _ => bucket.Cluster.GetHealthCheckServiceRequirements(),

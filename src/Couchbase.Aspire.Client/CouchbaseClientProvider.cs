@@ -21,7 +21,9 @@ internal sealed class CouchbaseClientProvider(IClusterProvider clusterProvider, 
 
     public string BucketName => bucketName ?? "";
 
-    public ValueTask<ICluster> GetClusterAsync() => clusterProvider.GetClusterAsync();
+    public ValueTask<ICluster> GetClusterAsync() => GetClusterAsync(CancellationToken.None);
+
+    public ValueTask<ICluster> GetClusterAsync(CancellationToken cancellationToken = default) => clusterProvider.GetClusterAsync(cancellationToken);
 
     public ValueTask<IBucket> GetBucketAsync()
     {

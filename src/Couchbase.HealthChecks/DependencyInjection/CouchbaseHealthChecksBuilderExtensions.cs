@@ -65,19 +65,7 @@ public static class CouchbaseHealthChecksBuilderExtensions
 
                 Func<CancellationToken, ValueTask<ICluster>> wrappedClusterFactory = clusterFactory is not null
                     ? async (ct) => cluster ??= await clusterFactory(sp, ct).ConfigureAwait(false)
-                    : (ct) =>
-                    {
-                        var clusterTask = sp.GetRequiredService<IClusterProvider>().GetClusterAsync();
-
-                        // Avoid the expensive of allocating a Task<T> on the heap if the ValueTask<T> is already complete
-                        // or if the caller isn't providing a cancellation token. In both cases WaitAsync is unnecessary.
-                        if (clusterTask.IsCompleted || !ct.CanBeCanceled)
-                        {
-                            return clusterTask;
-                        }
-
-                        return new ValueTask<ICluster>(clusterTask.AsTask().WaitAsync(ct));
-                    };
+                    : (ct) => sp.GetRequiredService<IClusterProvider>().GetClusterAsync(ct);
 
                 CouchbaseHealthCheck healthCheck = healthCheckType switch
                 {

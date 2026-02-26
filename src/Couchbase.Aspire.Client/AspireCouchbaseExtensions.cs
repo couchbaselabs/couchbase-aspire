@@ -141,13 +141,9 @@ public static class AspireCouchbaseExtensions
             {
                 options.ConnectionString = settings.ConnectionString;
             }
-            if (!string.IsNullOrEmpty(settings.Username))
+            if (!string.IsNullOrEmpty(settings.Username) && !string.IsNullOrEmpty(settings.Password))
             {
-                options.UserName = settings.Username;
-            }
-            if (!string.IsNullOrEmpty(settings.Password))
-            {
-                options.Password = settings.Password;
+                options.WithPasswordAuthentication(settings.Username, settings.Password);
             }
 
             configureClusterOptions?.Invoke(options);
@@ -179,7 +175,7 @@ public static class AspireCouchbaseExtensions
             builder.Services.AddOpenTelemetry()
                 .WithMetrics(metricBuilder =>
                     metricBuilder
-                        .AddCouchbaseInstrumentation(options => options.ExcludeLegacyMetrics = true));
+                        .AddCouchbaseInstrumentation(options => options.SemanticConvention = Core.Diagnostics.ObservabilitySemanticConvention.Modern));
         }
 
         if (!settings.DisableHealthChecks)
@@ -209,26 +205,14 @@ public static class AspireCouchbaseExtensions
                     try
                     {
                         // if the IClusterProvider can't be resolved, make a health check that will fail
-                        var clusterProvider = serviceKey is null ? sp.GetRequiredService<IClusterProvider>() : sp.GetRequiredKeyedService<IClusterProvider>(serviceKey);
-
-                        ValueTask<ICluster> ClusterFactory(CancellationToken ct)
-                        {
-                            var clusterTask = clusterProvider.GetClusterAsync();
-
-                            // Avoid the expense of allocating a Task<T> on the heap if the ValueTask<T> is already complete
-                            // or if the caller isn't providing a cancellation token. In both cases WaitAsync is unnecessary.
-                            if (clusterTask.IsCompleted || !ct.CanBeCanceled)
-                            {
-                                return clusterTask;
-                            }
-
-                            return new ValueTask<ICluster>(clusterTask.AsTask().WaitAsync(ct));
-                        }
+                        var clusterProvider = serviceKey is null
+                            ? sp.GetRequiredService<IClusterProvider>()
+                            : sp.GetRequiredKeyedService<IClusterProvider>(serviceKey);
 
                         CouchbaseHealthCheck healthCheck = settings.HealthChecks?.Type switch
                         {
-                            CouchbaseHealthCheckType.Passive => new CouchbasePassiveHealthCheck(ClusterFactory),
-                            _ => new CouchbaseActiveHealthCheck(ClusterFactory, settings.BucketName)
+                            CouchbaseHealthCheckType.Passive => new CouchbasePassiveHealthCheck(clusterProvider.GetClusterAsync),
+                            _ => new CouchbaseActiveHealthCheck(clusterProvider.GetClusterAsync, settings.BucketName)
                         };
 
                         healthCheck.ServiceRequirements = serviceRequirements;

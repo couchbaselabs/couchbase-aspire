@@ -12,24 +12,24 @@
 
   <PropertyGroup Label="Current">
     <MicrosoftExtensionsCachingHybridVersion>9.10.0</MicrosoftExtensionsCachingHybridVersion>
-    <MicrosoftExtensionsConfigurationBinderVersion>9.0.11</MicrosoftExtensionsConfigurationBinderVersion>
+    <MicrosoftExtensionsConfigurationBinderVersion>10.0.1</MicrosoftExtensionsConfigurationBinderVersion>
     <MicrosoftExtensionsDiagnosticsHealthChecksVersion>9.0.11</MicrosoftExtensionsDiagnosticsHealthChecksVersion>
     <MicrosoftExtensionsHostingAbstractionsVersion>9.0.11</MicrosoftExtensionsHostingAbstractionsVersion>
   </PropertyGroup>
 
   <PropertyGroup Label="LTS">
     <MicrosoftExtensionsCachingHybridLTSVersion>9.10.0</MicrosoftExtensionsCachingHybridLTSVersion>
-    <MicrosoftExtensionsConfigurationBinderLTSVersion>8.0.2</MicrosoftExtensionsConfigurationBinderLTSVersion>
+    <MicrosoftExtensionsConfigurationBinderLTSVersion>10.0.1</MicrosoftExtensionsConfigurationBinderLTSVersion>
     <MicrosoftExtensionsDiagnosticsHealthChecksLTSVersion>8.0.22</MicrosoftExtensionsDiagnosticsHealthChecksLTSVersion>
     <MicrosoftExtensionsHostingAbstractionsLTSVersion>8.0.1</MicrosoftExtensionsHostingAbstractionsLTSVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="Aspire.Hosting" Version="13.1.0" />
+    <PackageVersion Include="Aspire.Hosting" Version="13.1.2" />
     <PackageVersion Include="Couchbase.Extensions.Caching" Version="4.0.1" />
-    <PackageVersion Include="Couchbase.Extensions.DependencyInjection" Version="3.8.1" />
-    <PackageVersion Include="Couchbase.Extensions.OpenTelemetry" Version="3.8.1" />
-    <PackageVersion Include="CouchbaseNetClient" Version="3.8.1" />
+    <PackageVersion Include="Couchbase.Extensions.DependencyInjection" Version="3.9.0" />
+    <PackageVersion Include="Couchbase.Extensions.OpenTelemetry" Version="3.9.0" />
+    <PackageVersion Include="CouchbaseNetClient" Version="3.9.0" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.1.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
