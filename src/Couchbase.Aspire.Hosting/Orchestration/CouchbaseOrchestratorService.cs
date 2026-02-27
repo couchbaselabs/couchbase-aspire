@@ -10,14 +10,9 @@ internal sealed class CouchbaseOrchestratorService(
 {
     private bool IsSupported => !executionContext.IsPublishMode;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!IsSupported)
-        {
-            return;
-        }
-
-        await orchestrator.StartAsync(cancellationToken).ConfigureAwait(false);
+        return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
@@ -30,9 +25,17 @@ internal sealed class CouchbaseOrchestratorService(
         return Task.CompletedTask;
     }
 
-    public Task StartingAsync(CancellationToken cancellationToken)
+    public async Task StartingAsync(CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        if (!IsSupported)
+        {
+            return;
+        }
+
+        // The orchestrator must be started before DCP because it needs to handle events fired during
+        // DCP startup and additional hosted services do not start until after all services are running.
+        // Therefore, start the orchestrator in StartingAsync rather than StartAsync.
+        await orchestrator.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public Task StoppedAsync(CancellationToken cancellationToken)

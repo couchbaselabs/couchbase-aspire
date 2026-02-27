@@ -8,7 +8,6 @@ using Couchbase.Aspire.Hosting.Api;
 using Couchbase.Aspire.Hosting.Orchestration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 
 namespace Couchbase.Aspire.Hosting;
 
@@ -47,13 +46,7 @@ public static partial class CouchbaseClusterBuilderExtensions
             builder.Services.TryAddSingleton<CouchbaseClusterOrchestrator>();
             builder.Services.TryAddSingleton<ICouchbaseApiService, CouchbaseApiService>();
             builder.Services.TryAddSingleton<CouchbaseOrchestratorEvents>();
-
-            if (!builder.Services.Any(p => p.ImplementationType == typeof(CouchbaseOrchestratorService)))
-            {
-                // Our orchestrator must be registered before the built-in Aspire orchestrators, otherwise it won't
-                // execute until after all resources are started.
-                builder.Services.Insert(0, ServiceDescriptor.Singleton<IHostedService, CouchbaseOrchestratorService>());
-            }
+            builder.Services.AddHostedService<CouchbaseOrchestratorService>();
         }
 
         // don't use special characters in the password, since it goes into a URI
