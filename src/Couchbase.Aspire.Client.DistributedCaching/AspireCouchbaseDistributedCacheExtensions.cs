@@ -92,8 +92,6 @@ public static class AspireCouchbaseDistributedCacheExtensions
             configureOptions?.Invoke(options);
         });
 
-        builder.HostBuilder.Services.AddSingleton<IHybridCacheSerializerFactory, CouchbaseCacheSerializerFactory>();
-
         return builder;
     }
 
