@@ -228,11 +228,10 @@ public static class CouchbaseBucketBuilderExtensions
             return Task.CompletedTask;
         });
 
-        const string flushCommandName = "flush-bucket";
         if (enabled ?? false)
         {
             // Add a command to flush the bucket
-            builder.WithCommand(flushCommandName, "Flush",
+            builder.WithCommand(KnownCouchbaseBucketCommands.FlushBucket, "Flush",
                 async (context) =>
                 {
                     var apiService = context.ServiceProvider.GetRequiredService<ICouchbaseApiService>();
@@ -285,7 +284,7 @@ public static class CouchbaseBucketBuilderExtensions
             // Remove the command if it was previously added
             var existingCommand = builder.Resource.Annotations
                 .OfType<ResourceCommandAnnotation>()
-                .FirstOrDefault(p => p.Name == flushCommandName);
+                .FirstOrDefault(p => p.Name == KnownCouchbaseBucketCommands.FlushBucket);
 
             if (existingCommand is not null)
             {
