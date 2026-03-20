@@ -2,31 +2,27 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
-
   <PropertyGroup Label="Preview">
     <MicrosoftExtensionsCachingHybridPreviewVersion>10.2.0</MicrosoftExtensionsCachingHybridPreviewVersion>
     <MicrosoftExtensionsConfigurationBinderPreviewVersion>10.0.1</MicrosoftExtensionsConfigurationBinderPreviewVersion>
     <MicrosoftExtensionsDiagnosticsHealthChecksPreviewVersion>10.0.1</MicrosoftExtensionsDiagnosticsHealthChecksPreviewVersion>
     <MicrosoftExtensionsHostingAbstractionsPreviewVersion>10.0.1</MicrosoftExtensionsHostingAbstractionsPreviewVersion>
   </PropertyGroup>
-
   <PropertyGroup Label="Current">
     <MicrosoftExtensionsCachingHybridVersion>9.10.0</MicrosoftExtensionsCachingHybridVersion>
     <MicrosoftExtensionsConfigurationBinderVersion>10.0.1</MicrosoftExtensionsConfigurationBinderVersion>
     <MicrosoftExtensionsDiagnosticsHealthChecksVersion>9.0.11</MicrosoftExtensionsDiagnosticsHealthChecksVersion>
     <MicrosoftExtensionsHostingAbstractionsVersion>9.0.11</MicrosoftExtensionsHostingAbstractionsVersion>
   </PropertyGroup>
-
   <PropertyGroup Label="LTS">
     <MicrosoftExtensionsCachingHybridLTSVersion>9.10.0</MicrosoftExtensionsCachingHybridLTSVersion>
     <MicrosoftExtensionsConfigurationBinderLTSVersion>10.0.1</MicrosoftExtensionsConfigurationBinderLTSVersion>
     <MicrosoftExtensionsDiagnosticsHealthChecksLTSVersion>8.0.22</MicrosoftExtensionsDiagnosticsHealthChecksLTSVersion>
     <MicrosoftExtensionsHostingAbstractionsLTSVersion>8.0.1</MicrosoftExtensionsHostingAbstractionsLTSVersion>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting" Version="13.1.2" />
-    <PackageVersion Include="Couchbase.Extensions.Caching" Version="4.0.1" />
+    <PackageVersion Include="Couchbase.Extensions.Caching" Version="5.0.1" />
     <PackageVersion Include="Couchbase.Extensions.DependencyInjection" Version="3.9.0" />
     <PackageVersion Include="Couchbase.Extensions.OpenTelemetry" Version="3.9.0" />
     <PackageVersion Include="CouchbaseNetClient" Version="3.9.0" />
@@ -38,7 +34,6 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.14.0" />
   </ItemGroup>
-
   <!-- The following 3 groups are for packages that need to switch based on the .NET TFM being used. -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.Caching.Hybrid" Version="$(MicrosoftExtensionsCachingHybridLTSVersion)" />
