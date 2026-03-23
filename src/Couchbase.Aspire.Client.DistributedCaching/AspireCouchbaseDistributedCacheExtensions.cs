@@ -39,6 +39,28 @@ public static class AspireCouchbaseDistributedCacheExtensions
     }
 
     /// <summary>
+    /// Adds Couchbase distributed caching services, <see cref="IDistributedCache"/> and <see cref="ICouchbaseCache"/>, in the services
+    /// provided by the <paramref name="builder"/>.
+    /// </summary>
+    /// <param name="builder">The <see cref="IHostApplicationBuilder" /> to read config from and add services to.</param>
+    /// <param name="name">The name of the component, which is used as the <see cref="ServiceDescriptor.ServiceKey"/> of the service and also to retrieve the connection string from the ConnectionStrings configuration section.</param>
+    /// <param name="configureSettings">An optional method that can be used for customizing the <see cref="CouchbaseClientSettings"/>. It's invoked after the settings are read from the configuration.</param>
+    /// <param name="configureClusterOptions">An optional method that can be used for customizing the <see cref="ClusterOptions"/>. It's invoked after the options are read from the configuration.</param>
+    /// <remarks>Reads the configuration from "Aspire:Couchbase:Client:{name}" section.</remarks>
+    public static void AddKeyedCouchbaseDistributedCache(
+        this IHostApplicationBuilder builder,
+        string name,
+        Action<CouchbaseClientSettings>? configureSettings = null,
+        Action<ClusterOptions>? configureClusterOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        builder.AddKeyedCouchbaseClientBuilder(name, configureSettings, configureClusterOptions)
+            .WithKeyedDistributedCache(name);
+    }
+
+    /// <summary>
     /// Configures the Couchbase client to also provide distributed caching services through <see cref="IDistributedCache"/>
     /// and <see cref="ICouchbaseCache"/>.
     /// </summary>
@@ -66,21 +88,63 @@ public static class AspireCouchbaseDistributedCacheExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.HostBuilder.Services.TryAddSingleton<ICouchbaseCacheBucketProvider>(sp =>
+        return builder.WithKeyedDistributedCacheCore(serviceKey: null, configureOptions);
+    }
+
+    /// <summary>
+    /// Configures the Couchbase client to also provide distributed caching services through <see cref="IDistributedCache"/>
+    /// and <see cref="ICouchbaseCache"/>.
+    /// </summary>
+    /// <param name="builder">The <see cref="AspireCouchbaseClientBuilder"/> to configure.</param>
+    /// <param name="name">The name of the component, which is used as the <see cref="ServiceDescriptor.ServiceKey"/> of the service and also to retrieve the connection string from the ConnectionStrings configuration section.</param>
+    /// <param name="configureOptions">An optional method that can be used for customizing the <see cref="CouchbaseCacheOptions"/>.</param>
+    /// <returns>The <see cref="AspireCouchbaseClientBuilder"/> for method chaining.</returns>
+    /// <example>
+    /// The following example creates an IDistributedCache service using the Couchbase client connection named "couchbase".
+    /// <code lang="csharp">
+    /// var builder = WebApplication.CreateBuilder(args);
+    ///
+    /// builder.AddCouchbaseClientBuilder("couchbase")
+    ///        .WithDistributedCache();
+    /// </code>
+    /// The created IDistributedCache service can then be resolved from an IServiceProvider:
+    /// <code lang="csharp">
+    /// IServiceProvider serviceProvider = builder.Services.BuildServiceProvider();
+    ///
+    /// var cache = serviceProvider.GetRequiredService&lt;IDistributedCache&gt;();
+    /// </code>
+    /// </example>
+    public static AspireCouchbaseClientBuilder WithKeyedDistributedCache(
+        this AspireCouchbaseClientBuilder builder,
+        string name,
+        Action<CouchbaseCacheOptions>? configureOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        return WithKeyedDistributedCacheCore(builder, name, configureOptions);
+    }
+
+    private static AspireCouchbaseClientBuilder WithKeyedDistributedCacheCore(
+        this AspireCouchbaseClientBuilder builder,
+        string? serviceKey,
+        Action<CouchbaseCacheOptions>? configureOptions = null)
+    {
+        ICouchbaseCacheBucketProvider CacheBucketProviderFactory(IServiceProvider sp)
         {
             // Resolve the appropriate IBucketProvider based on the service key
 
-            var key = builder.ServiceKey;
-            var bucketProvider = key is null
+            var bucketServiceKey = builder.ServiceKey;
+            var bucketProvider = bucketServiceKey is null
                 ? sp.GetRequiredService<IBucketProvider>()
-                : sp.GetRequiredKeyedService<IBucketProvider>(key);
+                : sp.GetRequiredKeyedService<IBucketProvider>(bucketServiceKey);
 
-            var options = sp.GetRequiredService<IOptions<CouchbaseCacheOptions>>();
+            var options = sp.GetRequiredService<IOptionsMonitor<CouchbaseCacheOptions>>();
 
-            return new AspireCouchbaseCacheBucketProvider(bucketProvider, options);
-        });
+            return new AspireCouchbaseCacheBucketProvider(bucketProvider, options.Get(serviceKey));
+        }
 
-        builder.HostBuilder.Services.AddDistributedCouchbaseCache(options =>
+        void ConfigureOptions(CouchbaseCacheOptions options)
         {
             // Default to the bucket name from the Couchbase client settings, if provided
             if (builder.Settings.BucketName is string bucketName)
@@ -90,7 +154,20 @@ public static class AspireCouchbaseDistributedCacheExtensions
 
             // Allow further configuration
             configureOptions?.Invoke(options);
-        });
+        }
+
+        if (serviceKey is null)
+        {
+            builder.HostBuilder.Services.TryAddSingleton(CacheBucketProviderFactory);
+            builder.HostBuilder.Services.AddDistributedCouchbaseCache(ConfigureOptions);
+        }
+        else
+        {
+            builder.HostBuilder.Services.TryAddKeyedSingleton(serviceKey,
+                (sp, _) => CacheBucketProviderFactory(sp));
+
+            builder.HostBuilder.Services.AddKeyedDistributedCouchbaseCache(serviceKey, ConfigureOptions);
+        }
 
         return builder;
     }
