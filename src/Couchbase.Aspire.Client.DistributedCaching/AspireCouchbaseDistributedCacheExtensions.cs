@@ -186,7 +186,7 @@ public static class AspireCouchbaseDistributedCacheExtensions
     //    {
     //        options.DistributedCacheServiceKey = "cache-bucket";
     //        options.ApplyCouchbaseDefaults();
-    //    }
+    //    })
     //    .AddSerializerFactory<CouchbaseCacheSerializerFactory>();
 
     /// <summary>
