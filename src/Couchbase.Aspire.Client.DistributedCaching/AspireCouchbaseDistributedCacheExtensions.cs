@@ -88,7 +88,7 @@ public static class AspireCouchbaseDistributedCacheExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.WithKeyedDistributedCacheCore(serviceKey: null, configureOptions);
+        return builder.WithDistributedCacheCore(serviceKey: null, configureOptions);
     }
 
     /// <summary>
@@ -122,10 +122,10 @@ public static class AspireCouchbaseDistributedCacheExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        return WithKeyedDistributedCacheCore(builder, name, configureOptions);
+        return WithDistributedCacheCore(builder, name, configureOptions);
     }
 
-    private static AspireCouchbaseClientBuilder WithKeyedDistributedCacheCore(
+    private static AspireCouchbaseClientBuilder WithDistributedCacheCore(
         this AspireCouchbaseClientBuilder builder,
         string? serviceKey,
         Action<CouchbaseCacheOptions>? configureOptions = null)
@@ -174,6 +174,21 @@ public static class AspireCouchbaseDistributedCacheExtensions
 
 #if NET9_0_OR_GREATER
 
+    // The opinionated hybrid cache registration assumes that the distributed cache and hybrid cache are
+    // both registered with the same service key (or no service key). If a more complex configuration
+    // is desired, the consumer may register the hybrid cache themselves, use the ApplyCouchbaseDefaults method
+    // to set the options, and add the serializer factory manually.
+    //
+    // i.e.
+    //
+    // builder.AddKeyedCouchbaseDistributedCache("cache-bucket");
+    // builder.Services.AddHybridCache(options =>
+    //    {
+    //        options.DistributedCacheServiceKey = "cache-bucket";
+    //        options.ApplyCouchbaseDefaults();
+    //    })
+    //    .AddSerializerFactory<CouchbaseCacheSerializerFactory>();
+
     /// <summary>
     /// Adds Couchbase distributed caching services, <see cref="IDistributedCache"/> and <see cref="ICouchbaseCache"/>, and
     /// hybrid caching services, <see cref="HybridCache"/>, in the services provided by the <paramref name="builder"/>.
@@ -195,7 +210,31 @@ public static class AspireCouchbaseDistributedCacheExtensions
         ArgumentException.ThrowIfNullOrEmpty(connectionName);
 
         builder.AddCouchbaseClientBuilder(connectionName, configureSettings, configureClusterOptions)
-            .WithHybridCache();
+            .WithHybridCache(configureHybridCacheOptions: configureHybridCacheOptions);
+    }
+
+    /// <summary>
+    /// Adds Couchbase distributed caching services, <see cref="IDistributedCache"/> and <see cref="ICouchbaseCache"/>, and
+    /// hybrid caching services, <see cref="HybridCache"/>, in the services provided by the <paramref name="builder"/>.
+    /// </summary>
+    /// <param name="builder">The <see cref="IHostApplicationBuilder" /> to read config from and add services to.</param>
+    /// <param name="name">The name of the component, which is used as the <see cref="ServiceDescriptor.ServiceKey"/> of the service and also to retrieve the connection string from the ConnectionStrings configuration section.</param>
+    /// <param name="configureSettings">An optional method that can be used for customizing the <see cref="CouchbaseClientSettings"/>. It's invoked after the settings are read from the configuration.</param>
+    /// <param name="configureClusterOptions">An optional method that can be used for customizing the <see cref="ClusterOptions"/>. It's invoked after the options are read from the configuration.</param>
+    /// <param name="configureHybridCacheOptions">An optional method that can be used for customizing the <see cref="HybridCacheOptions"/>.</param>
+    /// <remarks>Reads the configuration from "Aspire:Couchbase:Client:{name}" section.</remarks>
+    public static void AddKeyedCouchbaseHybridCache(
+        this IHostApplicationBuilder builder,
+        string name,
+        Action<CouchbaseClientSettings>? configureSettings = null,
+        Action<ClusterOptions>? configureClusterOptions = null,
+        Action<HybridCacheOptions>? configureHybridCacheOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        builder.AddKeyedCouchbaseClientBuilder(name, configureSettings, configureClusterOptions)
+            .WithKeyedHybridCache(name, configureHybridCacheOptions: configureHybridCacheOptions);
     }
 
     /// <summary>
@@ -228,18 +267,92 @@ public static class AspireCouchbaseDistributedCacheExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.WithDistributedCache(configureDistributedCacheOptions);
+        return WithHybridCacheCore(builder, serviceKey: null, configureDistributedCacheOptions, configureHybridCacheOptions);
+    }
 
-        builder.HostBuilder.Services
-            .AddHybridCache(options =>
-            {
-                options.MaximumKeyLength = 250; // Maximum Couchbase key size
-                options.MaximumPayloadBytes = 20 * 1024 * 1024; // Maximum 20MB Couchbase document size
-                options.DisableCompression = true; // Prefer Snappy compression built into the Couchbase SDK
+    /// <summary>
+    /// Configures the Couchbase client to also provide distributed caching services through <see cref="IDistributedCache"/>
+    /// and <see cref="ICouchbaseCache"/> and hybrid caching through <see cref="HybridCache"/>.
+    /// </summary>
+    /// <param name="builder">The <see cref="AspireCouchbaseClientBuilder"/> to configure.</param>
+    /// <param name="name">The name of the component, which is used as the <see cref="ServiceDescriptor.ServiceKey"/> of the service and also to retrieve the connection string from the ConnectionStrings configuration section.</param>
+    /// <param name="configureDistributedCacheOptions">An optional method that can be used for customizing the <see cref="CouchbaseCacheOptions"/>.</param>
+    /// <param name="configureHybridCacheOptions">An optional method that can be used for customizing the <see cref="HybridCacheOptions"/>.</param>
+    /// <returns>The <see cref="AspireCouchbaseClientBuilder"/> for method chaining.</returns>
+    /// <example>
+    /// The following example creates an IDistributedCache and HybridCache service using the Couchbase client connection named "couchbase".
+    /// <code lang="csharp">
+    /// var builder = WebApplication.CreateBuilder(args);
+    ///
+    /// builder.AddCouchbaseClientBuilder("couchbase")
+    ///        .WithKeyedHybridCache("service-key");
+    /// </code>
+    /// The created HybridCache service can then be resolved from an IServiceProvider:
+    /// <code lang="csharp">
+    /// IServiceProvider serviceProvider = builder.Services.BuildServiceProvider();
+    ///
+    /// var cache = serviceProvider.GetRequiredKeyedService&lt;HybridCache&gt;("service-key");
+    /// </code>
+    /// </example>
+    public static AspireCouchbaseClientBuilder WithKeyedHybridCache(
+        this AspireCouchbaseClientBuilder builder,
+        string name,
+        Action<CouchbaseCacheOptions>? configureDistributedCacheOptions = null,
+        Action<HybridCacheOptions>? configureHybridCacheOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(name);
 
-                configureHybridCacheOptions?.Invoke(options);
-            })
-            .AddSerializerFactory<CouchbaseCacheSerializerFactory>();
+        return WithHybridCacheCore(builder, name, configureDistributedCacheOptions, configureHybridCacheOptions);
+    }
+
+    /// <summary>
+    /// Applies Couchbase-compatible default configuration to the <see cref="HybridCacheOptions"/>.
+    /// </summary>
+    /// <param name="options">The <see cref="HybridCacheOptions"/> to configure.</param>
+    /// <remarks>
+    /// - Sets <see cref="HybridCacheOptions.MaximumKeyLength"/> to the Couchbase maximum of 250 characters.
+    /// - Sets <see cref="HybridCacheOptions.MaximumPayloadBytes"/> to the Couchbase maximum of 20MB.
+    /// - Sets <see cref="HybridCacheOptions.DisableCompression"/> to <c>true</c> to prefer Snappy compression built into the Couchbase SDK.
+    /// </remarks>
+    public static void ApplyCouchbaseDefaults(this HybridCacheOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        options.MaximumKeyLength = 250; // Maximum Couchbase key size
+        options.MaximumPayloadBytes = 20 * 1024 * 1024; // Maximum 20MB Couchbase document size
+        options.DisableCompression = true; // Prefer Snappy compression built into the Couchbase SDK
+    }
+
+    private static AspireCouchbaseClientBuilder WithHybridCacheCore(
+        this AspireCouchbaseClientBuilder builder,
+        string? serviceKey,
+        Action<CouchbaseCacheOptions>? configureDistributedCacheOptions = null,
+        Action<HybridCacheOptions>? configureHybridCacheOptions = null)
+    {
+        void ConfigureHybridCacheOptions(HybridCacheOptions options)
+        {
+            options.ApplyCouchbaseDefaults();
+            options.DistributedCacheServiceKey = serviceKey;
+
+            configureHybridCacheOptions?.Invoke(options);
+        }
+
+        IHybridCacheBuilder cacheBuilder;
+        if (serviceKey is null)
+        {
+            builder.WithDistributedCache(configureDistributedCacheOptions);
+
+            cacheBuilder = builder.HostBuilder.Services.AddHybridCache(ConfigureHybridCacheOptions);
+        }
+        else
+        {
+            builder.WithKeyedDistributedCache(serviceKey, configureDistributedCacheOptions);
+
+            cacheBuilder = builder.HostBuilder.Services.AddKeyedHybridCache(serviceKey, ConfigureHybridCacheOptions);
+        }
+
+        cacheBuilder.AddSerializerFactory<CouchbaseCacheSerializerFactory>();
 
         return builder;
     }
