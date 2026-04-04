@@ -181,7 +181,7 @@ public static class AspireCouchbaseDistributedCacheExtensions
     //
     // i.e.
     //
-    // builder.AddKeyedCouchbaseCache("cache-bucket");
+    // builder.AddKeyedCouchbaseDistributedCache("cache-bucket");
     // builder.Services.AddHybridCache(options =>
     //    {
     //        options.DistributedCacheServiceKey = "cache-bucket";
@@ -210,7 +210,7 @@ public static class AspireCouchbaseDistributedCacheExtensions
         ArgumentException.ThrowIfNullOrEmpty(connectionName);
 
         builder.AddCouchbaseClientBuilder(connectionName, configureSettings, configureClusterOptions)
-            .WithHybridCache();
+            .WithHybridCache(configureHybridCacheOptions: configureHybridCacheOptions);
     }
 
     /// <summary>
@@ -234,7 +234,7 @@ public static class AspireCouchbaseDistributedCacheExtensions
         ArgumentException.ThrowIfNullOrEmpty(name);
 
         builder.AddKeyedCouchbaseClientBuilder(name, configureSettings, configureClusterOptions)
-            .WithKeyedHybridCache(name);
+            .WithKeyedHybridCache(name, configureHybridCacheOptions: configureHybridCacheOptions);
     }
 
     /// <summary>
@@ -285,13 +285,13 @@ public static class AspireCouchbaseDistributedCacheExtensions
     /// var builder = WebApplication.CreateBuilder(args);
     ///
     /// builder.AddCouchbaseClientBuilder("couchbase")
-    ///        .WithHybridCache();
+    ///        .WithKeyedHybridCache("service-key");
     /// </code>
     /// The created HybridCache service can then be resolved from an IServiceProvider:
     /// <code lang="csharp">
     /// IServiceProvider serviceProvider = builder.Services.BuildServiceProvider();
     ///
-    /// var cache = serviceProvider.GetRequiredService&lt;HybridCache&gt;();
+    /// var cache = serviceProvider.GetRequiredKeyedService&lt;HybridCache&gt;("service-key");
     /// </code>
     /// </example>
     public static AspireCouchbaseClientBuilder WithKeyedHybridCache(
@@ -349,7 +349,7 @@ public static class AspireCouchbaseDistributedCacheExtensions
         {
             builder.WithKeyedDistributedCache(serviceKey, configureDistributedCacheOptions);
 
-            cacheBuilder = builder.HostBuilder.Services.AddKeyedHybridCache(serviceKey, ConfigureHybridCacheOptions); ;
+            cacheBuilder = builder.HostBuilder.Services.AddKeyedHybridCache(serviceKey, ConfigureHybridCacheOptions);
         }
 
         cacheBuilder.AddSerializerFactory<CouchbaseCacheSerializerFactory>();
