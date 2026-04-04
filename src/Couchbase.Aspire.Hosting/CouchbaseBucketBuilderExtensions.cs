@@ -124,7 +124,6 @@ public static class CouchbaseBucketBuilderExtensions
             {
                 ResourceType = "CouchbaseBucket",
                 CreationTimeStamp = DateTime.UtcNow,
-                State = KnownResourceStates.NotStarted,
                 Properties =
                 [
                     new(CustomResourceKnownProperties.Source, "Couchbase")

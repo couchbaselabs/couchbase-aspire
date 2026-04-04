@@ -1,0 +1,9 @@
+{
+  "appHost": {
+    "path": "tests\\Aspire.Test.AppHost\\Aspire.Test.AppHost.csproj"
+  },
+  "sdk": {
+    "version": "13.2.0"
+  },
+  "channel": "stable"
+}

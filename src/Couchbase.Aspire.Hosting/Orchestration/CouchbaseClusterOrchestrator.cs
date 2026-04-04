@@ -77,9 +77,9 @@ internal sealed class CouchbaseClusterOrchestrator
     {
         _eventing.Subscribe<InitializeResourceEvent>(async (@event, ct) =>
         {
-            if (@event.Resource is CouchbaseClusterResource cluster)
+            if (@event.Resource is ICouchbaseCustomResource couchbaseResource)
             {
-                await StartResourceCoreAsync(cluster, StartClusterAsync, isExplicitStart: false, ct).ConfigureAwait(false);
+                await StartResourceAsync(couchbaseResource, isExplicitStart: false, ct).ConfigureAwait(false);
             }
         });
 
@@ -111,30 +111,6 @@ internal sealed class CouchbaseClusterOrchestrator
                 StartTimeStamp = DateTime.UtcNow,
                 State = KnownResourceStates.Starting,
             }).ConfigureAwait(false);
-
-            if (@event.Resource is CouchbaseClusterResource cluster)
-            {
-                // Start the buckets in the cluster. Run in the background to avoid blocking the cluster start.
-                foreach (var bucket in cluster.Buckets.Values)
-                {
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await StartResourceAsync(bucket, ct).ConfigureAwait(false);
-                        }
-                        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                        {
-                            // Ignore
-                        }
-                        catch (Exception ex)
-                        {
-                            var resourceLogger = _resourceLoggerService.GetLogger(bucket);
-                            resourceLogger.LogError(ex, "Failed to start Couchbase bucket '{BucketName}'.", bucket.BucketName);
-                        }
-                    }, ct);
-                }
-            }
         });
 
         _orchestratorEvents.Subscribe<OnCouchbaseResourceStartedEvent>(async (@event, ct) =>
@@ -225,7 +201,12 @@ internal sealed class CouchbaseClusterOrchestrator
             var explicitStartup = resource.TryGetAnnotationsOfType<ExplicitStartupAnnotation>(out _) is true;
             if (explicitStartup)
             {
-                // Don't startup automatically if explicit startup is requested
+                // Don't startup automatically if explicit startup is requested, put it into the NotStarted state instead
+                await _resourceNotificationService.PublishUpdateAsync(resource, s => s with
+                {
+                    State = s.State is null ? KnownResourceStates.NotStarted : s.State
+                }).ConfigureAwait(false);
+
                 return;
             }
         }
@@ -242,17 +223,24 @@ internal sealed class CouchbaseClusterOrchestrator
         }
     }
 
-    public async Task StartResourceAsync(ICouchbaseCustomResource resource, CancellationToken cancellationToken)
+    public Task StartResourceAsync(ICouchbaseCustomResource resource, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        return StartResourceAsync(resource, isExplicitStart: true, cancellationToken);
+    }
+
+    private async Task StartResourceAsync(ICouchbaseCustomResource resource, bool isExplicitStart, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(resource);
 
         switch (resource)
         {
             case CouchbaseClusterResource cluster:
-                await StartResourceCoreAsync(cluster, StartClusterAsync, isExplicitStart: true, cancellationToken).ConfigureAwait(false);
+                await StartResourceCoreAsync(cluster, StartClusterAsync, isExplicitStart, cancellationToken).ConfigureAwait(false);
                 break;
             case CouchbaseBucketBaseResource bucket:
-                await StartResourceCoreAsync(bucket, CreateBucketAsync, isExplicitStart: true, cancellationToken).ConfigureAwait(false);
+                await StartResourceCoreAsync(bucket, CreateBucketAsync, isExplicitStart, cancellationToken).ConfigureAwait(false);
                 break;
             default:
                 throw new ArgumentException("Unsupported resource type.", nameof(resource));

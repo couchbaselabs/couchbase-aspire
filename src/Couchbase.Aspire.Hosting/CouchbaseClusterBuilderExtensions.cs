@@ -125,7 +125,6 @@ public static partial class CouchbaseClusterBuilderExtensions
             {
                 ResourceType = "CouchbaseCluster",
                 CreationTimeStamp = DateTime.UtcNow,
-                State = KnownResourceStates.NotStarted,
                 Properties =
                 [
                     new(CustomResourceKnownProperties.Source, "Couchbase"),
