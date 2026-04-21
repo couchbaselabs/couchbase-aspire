@@ -78,6 +78,9 @@ jobs:
     - name: Build
       run: dotnet build --no-restore -c Release /p:Version=${{ steps.get-version.outputs.VERSION }} /p:InformationalVersion=${{ steps.get-version.outputs.INFORMATIONAL_VERSION }}
 
+    - name: Test
+      run: dotnet test --no-build -c Release --report-github
+
     - name: Pack
       run: dotnet pack --no-build -c Release /p:PackageVersion=${{ steps.get-version.outputs.PACKAGE_VERSION }}
     - name: Upload Package Artifact

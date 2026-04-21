@@ -76,15 +76,15 @@ public sealed partial class CouchbaseClientSettings
 
         if (match.Groups["username"] is { Success: true, Value: string username })
         {
-            Username = username;
+            Username = Uri.UnescapeDataString(username);
         }
         if (match.Groups["password"] is { Success: true, Value: string password })
         {
-            Password = password;
+            Password = Uri.UnescapeDataString(password);
         }
         if (match.Groups["bucket"] is { Success: true, Value: string bucketName })
         {
-            BucketName = bucketName;
+            BucketName = Uri.UnescapeDataString(bucketName);
         }
 
         if (match.Groups["params"] is { Success: true, Value: string queryParams })

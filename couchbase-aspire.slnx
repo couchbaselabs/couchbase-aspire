@@ -11,4 +11,5 @@
   <Project Path="tests/Aspire.Test.AppHost/Aspire.Test.AppHost.csproj" />
   <Project Path="tests/Aspire.Test.ServiceDefaults/Aspire.Test.ServiceDefaults.csproj" />
   <Project Path="tests/Aspire.Test.WebApp/Aspire.Test.WebApp.csproj" />
+  <Project Path="tests/Couchbase.Aspire.Client.UnitTests/Couchbase.Aspire.Client.UnitTests.csproj" />
 </Solution>
