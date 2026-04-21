@@ -28,8 +28,8 @@ public static partial class CouchbaseClusterBuilderExtensions
     /// <param name="builder">The <see cref="IDistributedApplicationBuilder"/>.</param>
     /// <param name="name">The name of the resource. This name will be used as the connection string name when referenced in a dependency.</param>
     /// <param name="clusterName">The parameter used to provide the cluster name. If <see langword="null"/> the resource name will be used.</param>
-    /// <param name="userName">The parameter used to provide the user name for the RabbitMQ resource. If <see langword="null"/> a default value will be used.</param>
-    /// <param name="password">The parameter used to provide the password for the RabbitMQ resource. If <see langword="null"/> a random password will be generated.</param>
+    /// <param name="userName">The parameter used to provide the username for the Couchbase resource. If <see langword="null"/> a default value will be used.</param>
+    /// <param name="password">The parameter used to provide the password for the Couchbase resource. If <see langword="null"/> a random password will be generated.</param>
     /// <returns>A reference to the <see cref="IResourceBuilder{T}"/>.</returns>
     public static IResourceBuilder<CouchbaseClusterResource> AddCouchbase(this IDistributedApplicationBuilder builder,
         [ResourceName] string name,
