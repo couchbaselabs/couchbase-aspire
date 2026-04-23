@@ -23,9 +23,9 @@
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting" Version="13.2.1" />
     <PackageVersion Include="Couchbase.Extensions.Caching" Version="5.0.1" />
-    <PackageVersion Include="Couchbase.Extensions.DependencyInjection" Version="3.9.0" />
-    <PackageVersion Include="Couchbase.Extensions.OpenTelemetry" Version="3.9.0" />
-    <PackageVersion Include="CouchbaseNetClient" Version="3.9.0" />
+    <PackageVersion Include="Couchbase.Extensions.DependencyInjection" Version="3.9.1" />
+    <PackageVersion Include="Couchbase.Extensions.OpenTelemetry" Version="3.9.1" />
+    <PackageVersion Include="CouchbaseNetClient" Version="3.9.1" />
     <PackageVersion Include="GitHubActionsTestLogger" Version="3.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.1.0" />
