@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 
 namespace Couchbase.Aspire.Hosting;
@@ -113,6 +115,9 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
             builder.AppendFormatted(bucketName, "uri");
         }
 
+        builder.AppendLiteral("?network=");
+        builder.AppendValueProvider(NetworkValueProvider.Instance);
+
         return builder.Build();
     }
 
@@ -152,5 +157,48 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
         yield return new("Username", UserNameReference);
         yield return new("Password", ReferenceExpression.Create($"{PasswordParameter}"));
         yield return new("Uri", ConnectionStringExpression);
+    }
+
+
+    /// <summary>
+    /// Returns "default" when getting a connection string for a container resource, otherwise returns "auto".
+    /// </summary>
+    /// <remarks>
+    /// This ensures that container resources don't attempt to use the external alternate addresses when they are already
+    /// running within the container network.
+    /// </remarks>
+    private sealed class NetworkValueProvider : IValueProvider, IManifestExpressionProvider
+    {
+        public static NetworkValueProvider Instance { get; } = new();
+
+        public string ValueExpression => "auto";
+
+        public ValueTask<string?> GetValueAsync(CancellationToken cancellationToken = default)
+        {
+            return GetValueAsync(new(), cancellationToken);
+        }
+
+        public ValueTask<string?> GetValueAsync(ValueProviderContext context, CancellationToken cancellationToken = default)
+        {
+            var networkId = GetNetworkIdentifier(context);
+
+            return ValueTask.FromResult<string?>(networkId == KnownNetworkIdentifiers.DefaultAspireContainerNetwork ? "default" : "auto");
+        }
+
+        private static NetworkIdentifier GetNetworkIdentifier(ValueProviderContext context)
+        {
+            return context?.Network ?? GetDefaultResourceNetwork(context?.Caller) ?? KnownNetworkIdentifiers.LocalhostNetwork;
+        }
+
+        [return: NotNullIfNotNull(nameof(resource))]
+        private static NetworkIdentifier? GetDefaultResourceNetwork(IResource? resource)
+        {
+            if (resource is null)
+            {
+                return null;
+            }
+
+            return resource.IsContainer() ? KnownNetworkIdentifiers.DefaultAspireContainerNetwork : KnownNetworkIdentifiers.LocalhostNetwork;
+        }
     }
 }
