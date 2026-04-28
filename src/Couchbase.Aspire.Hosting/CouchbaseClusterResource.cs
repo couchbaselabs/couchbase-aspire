@@ -159,7 +159,6 @@ public class CouchbaseClusterResource : Resource, IResourceWithConnectionString,
         yield return new("Uri", ConnectionStringExpression);
     }
 
-
     /// <summary>
     /// Returns "default" when getting a connection string for a container resource, otherwise returns "auto".
     /// </summary>
