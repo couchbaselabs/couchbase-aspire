@@ -8,6 +8,6 @@ internal static class CouchbaseContainerImageTags
     /// <remarks>library/couchbase</remarks>
     public const string Image = "library/couchbase";
 
-    /// <remarks>8.0.0</remarks>
-    public const string Tag = "8.0.0";
+    /// <remarks>8.0.1</remarks>
+    public const string Tag = "8.0.1";
 }
