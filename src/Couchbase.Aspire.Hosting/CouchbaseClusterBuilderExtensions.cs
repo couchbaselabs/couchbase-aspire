@@ -333,6 +333,62 @@ public static partial class CouchbaseClusterBuilderExtensions
     }
 
     /// <summary>
+    /// Sets a static data (KV) port for the Couchbase cluster connection string.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="port">Port number for the data endpoint, or <c>null</c> to assign a random port.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithDataPort(this IResourceBuilder<CouchbaseClusterResource> builder, int? port)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        if (!builder.Resource.TryGetLastAnnotation<CouchbasePortsAnnotation>(out var annotation))
+        {
+            annotation = new CouchbasePortsAnnotation { DataPort = port };
+            builder.WithAnnotation(annotation);
+        }
+        else
+        {
+            annotation.DataPort = port;
+        }
+
+        if (builder.Resource.GetPrimaryServer() is CouchbaseServerResource primaryServer)
+        {
+            annotation.ApplyToServer(builder.ApplicationBuilder.CreateResourceBuilder(primaryServer));
+        }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Sets a static secure data (KV) port for the Couchbase cluster connection string when TLS is enabled.
+    /// </summary>
+    /// <param name="builder">Builder for the Couchbase cluster.</param>
+    /// <param name="port">Port number for the secure data endpoint, or <c>null</c> to assign a random port.</param>
+    /// <returns>The <paramref name="builder"/>.</returns>
+    public static IResourceBuilder<CouchbaseClusterResource> WithSecureDataPort(this IResourceBuilder<CouchbaseClusterResource> builder, int? port)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        if (!builder.Resource.TryGetLastAnnotation<CouchbasePortsAnnotation>(out var annotation))
+        {
+            annotation = new CouchbasePortsAnnotation { DataSecurePort = port };
+            builder.WithAnnotation(annotation);
+        }
+        else
+        {
+            annotation.DataSecurePort = port;
+        }
+
+        if (builder.Resource.GetPrimaryServer() is CouchbaseServerResource primaryServer)
+        {
+            annotation.ApplyToServer(builder.ApplicationBuilder.CreateResourceBuilder(primaryServer));
+        }
+
+        return builder;
+    }
+
+    /// <summary>
     /// Sets a static secure management port for the Couchbase cluster.
     /// </summary>
     /// <param name="builder">Builder for the Couchbase cluster.</param>
