@@ -55,8 +55,9 @@ jobs:
             # Append the PR number and build number
             PACKAGE_VERSION="$VERSION-PullRequest.${{ github.event.pull_request.number }}.${{ github.run_number }}"
           else
-            # Append the branch and build number
-            PACKAGE_VERSION="$VERSION-Branch.${{ github.ref_name }}.${{ github.run_number }}"
+            # Append the branch and build number, replacing "/" which is invalid in a version
+            BRANCH_NAME=${GITHUB_REF_NAME//\//-}
+            PACKAGE_VERSION="$VERSION-Branch.$BRANCH_NAME.${{ github.run_number }}"
           fi
         fi
 
