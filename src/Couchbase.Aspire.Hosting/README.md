@@ -45,6 +45,23 @@ var myService = builder.AddProject<Projects.MyService>()
     .WaitFor(bucket);
 ```
 
+## MCP server
+
+Add the [Couchbase MCP server](https://hub.docker.com/r/couchbase/mcp-server) to a cluster with `WithCouchbaseMcpServer`. The container is named `{cluster}-mcp`, receives its connection information from the cluster, is hidden in the Aspire dashboard, and is registered with Aspire's `WithMcpServer` so it is proxied through the Aspire MCP server.
+
+This method is experimental (diagnostic `ASPIREMCP001`), matching Aspire's `WithMcpServer`.
+
+```csharp
+#pragma warning disable ASPIREMCP001
+
+var couchbase = builder.AddCouchbase("couchbase")
+    .WithCouchbaseMcpServer(mcp => mcp
+        .WithReadOnlyMode() // Optional, default is read/write
+        .WithImageTag("1.0.1")); // Optional, override the pinned image, tag, or registry
+```
+
+The host port is dynamic; use the Aspire MCP server to reach it.
+
 ## Connection properties
 
 When you reference a Couchbase cluster resource using `WithReference`, the following connection properties are made available to the consuming project:

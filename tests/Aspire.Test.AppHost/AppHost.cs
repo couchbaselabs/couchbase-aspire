@@ -3,13 +3,16 @@ using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Microsoft.Extensions.Configuration;
 
+#pragma warning disable ASPIREMCP001
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 var couchbasePassword = builder.AddParameter("couchbase-password", "password", secret: true);
 
 var couchbase = builder.AddCouchbase("couchbase", password: couchbasePassword)
     .WithManagementPort(8091) // Optional fixed port number for the primary node
-    .WithCouchbaseEdition(CouchbaseEdition.Enterprise); // Optional edition, default is Enterprise
+    .WithCouchbaseEdition(CouchbaseEdition.Enterprise) // Optional edition, default is Enterprise
+    .WithCouchbaseMcpServer(mcp => mcp.WithReadOnlyMode()); // Optional MCP server, proxied by the Aspire MCP server
 
 var couchbaseGroup1 = couchbase.AddServerGroup("couchbase-group1")
     .WithServices(CouchbaseServices.Data | CouchbaseServices.Query | CouchbaseServices.Index | CouchbaseServices.Search)
