@@ -57,7 +57,7 @@ This method is experimental (diagnostic `ASPIREMCP001`), matching Aspire's `With
 var couchbase = builder.AddCouchbase("couchbase")
     .WithCouchbaseMcpServer(mcp => mcp
         .WithReadOnlyMode() // Optional, default is read/write
-        .WithImageTag("1.0.1")); // Optional, override the pinned image, tag, or registry
+        .WithImageTag("latest")); // Optional, run a different couchbase/mcp-server tag than the pinned default
 ```
 
 The host port is dynamic; use the Aspire MCP server to reach it.

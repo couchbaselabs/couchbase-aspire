@@ -59,9 +59,13 @@ public static class CouchbaseMcpServerBuilderExtensions
             .WithEnvironment("CB_MCP_HOST", "0.0.0.0")
             .WithEnvironment("CB_MCP_PORT", McpPort.ToString())
             .WithEnvironment("CB_MCP_READ_ONLY_MODE", "false")
-            // UriExpression resolves network=default for container consumers and omits credentials,
-            // which the MCP server takes separately.
-            .WithEnvironment("CB_CONNECTION_STRING", cluster.UriExpression)
+            .WithEnvironment(context =>
+            {
+                // Built in a callback so the server list includes server groups added after this call.
+                // UriExpression resolves network=default for container consumers and omits credentials,
+                // which the MCP server takes separately.
+                context.EnvironmentVariables["CB_CONNECTION_STRING"] = cluster.UriExpression;
+            })
             .WithEnvironment("CB_USERNAME", cluster.UserNameReference)
             .WithEnvironment("CB_PASSWORD", cluster.PasswordParameter)
             .WithParentRelationship(builder)
