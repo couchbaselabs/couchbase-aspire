@@ -12,6 +12,8 @@ public static class CouchbaseMcpServerBuilderExtensions
 {
     private const int McpPort = 9001;
     private const string McpPath = "/mcp";
+    private const string CertificateDirectory = "/etc/couchbase-mcp/certs";
+    private const string CaCertificateFileName = "ca.pem";
 
     /// <summary>
     /// Adds a Couchbase MCP server container connected to the cluster.
@@ -65,7 +67,15 @@ public static class CouchbaseMcpServerBuilderExtensions
                 // UriExpression resolves network=default for container consumers and omits credentials,
                 // which the MCP server takes separately.
                 context.EnvironmentVariables["CB_CONNECTION_STRING"] = cluster.UriExpression;
+
+                // Built in a callback so a certification authority added after this call is included.
+                // The container does not use the host's trust store, so the CA is always supplied for TLS.
+                if (cluster.GetClusterCertificationAuthority() is not null)
+                {
+                    context.EnvironmentVariables["CB_CA_CERT_PATH"] = $"{CertificateDirectory}/{CaCertificateFileName}";
+                }
             })
+            .WithContainerFiles(CertificateDirectory, (_, _) => Task.FromResult(GetCaCertificateFiles(cluster)))
             .WithEnvironment("CB_USERNAME", cluster.UserNameReference)
             .WithEnvironment("CB_PASSWORD", cluster.PasswordParameter)
             .WithParentRelationship(builder)
@@ -96,5 +106,33 @@ public static class CouchbaseMcpServerBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         return builder.WithEnvironment("CB_MCP_READ_ONLY_MODE", readOnly ? "true" : "false");
+    }
+
+    /// <summary>
+    /// Returns the cluster's CA certificate and its chain as a PEM bundle, or nothing if the cluster does not use TLS.
+    /// </summary>
+    private static IEnumerable<ContainerFileSystemItem> GetCaCertificateFiles(CouchbaseClusterResource cluster)
+    {
+        if (cluster.GetClusterCertificationAuthority() is not { } certificationAuthority)
+        {
+            return [];
+        }
+
+        // The CA certificate is the first entry in the chain, followed by any intermediates and the root.
+        // Only public certificates are exported, never the private key.
+        var pem = string.Join('\n', certificationAuthority.CertificateChain
+            .DistinctBy(p => p.Thumbprint)
+            .Select(p => p.ExportCertificatePem()));
+
+        return
+        [
+            new ContainerFile
+            {
+                Name = CaCertificateFileName,
+                // Read-only. The MCP server image runs as a non-root user, so the public certificate must be world-readable.
+                Mode = UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead,
+                Contents = pem,
+            },
+        ];
     }
 }
