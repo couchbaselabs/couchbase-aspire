@@ -8,7 +8,7 @@
   <Project Path="src/Couchbase.Aspire.Hosting.Indices/Couchbase.Aspire.Hosting.Indices.csproj" />
   <Project Path="src/Couchbase.Aspire.Hosting/Couchbase.Aspire.Hosting.csproj" />
   <Project Path="src/Couchbase.HealthChecks/Couchbase.HealthChecks.csproj" />
-  <Project Path="tests/Aspire.Test.AppHost/Aspire.Test.AppHost.csproj" />
+  <Project Path="tests/Aspire.Test.AppHost/Aspire.Test.AppHost.csproj" DefaultStartup="true" />
   <Project Path="tests/Aspire.Test.ServiceDefaults/Aspire.Test.ServiceDefaults.csproj" />
   <Project Path="tests/Aspire.Test.WebApp/Aspire.Test.WebApp.csproj" />
   <Project Path="tests/Couchbase.Aspire.Client.UnitTests/Couchbase.Aspire.Client.UnitTests.csproj" />
