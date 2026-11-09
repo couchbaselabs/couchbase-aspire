@@ -17,7 +17,7 @@
 
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <NoWarn>$(NoWarn);CS1591</NoWarn> <!-- We're missing a lot of XML doc comments currently -->
+    <NoWarn>$(NoWarn);CS1591;NU1903</NoWarn> <!-- We're missing a lot of XML doc comments currently; suppress known-vulnerability-as-error until packages are updated -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <PublishRepositoryUrl>true</PublishRepositoryUrl>

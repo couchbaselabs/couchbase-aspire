@@ -14,6 +14,18 @@ Registers an [IDistributedCache](https://learn.microsoft.com/dotnet/api/microsof
 dotnet add package Couchbase.Aspire.Client.DistributedCaching
 ```
 
+Note: If you need the generated connection string to include a stable host:port for the data (KV) service so other projects can connect using a fixed port, configure the cluster in your AppHost using the hosting extensions:
+
+```csharp
+var couchbase = builder.AddCouchbase("couchbase")
+    .WithDataPort(11210); // request static non-TLS data port
+
+// or when using TLS for KV traffic:
+couchbase.WithSecureDataPort(11207);
+```
+
+These request a static port that will be applied to the node endpoints and appear in the connection string produced by Aspire.
+
 ## Usage example
 
 In the _AppHost.cs_ file of your project, call the `AddCouchbaseDistributedCache` extension method to register an `IDistributedCache` for use via the dependency injection container. The method takes a connection name parameter.
