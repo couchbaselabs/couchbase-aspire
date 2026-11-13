@@ -233,7 +233,7 @@ public static class CouchbaseBucketBuilderExtensions
             builder.WithCommand(KnownCouchbaseBucketCommands.FlushBucket, "Flush",
                 async (context) =>
                 {
-                    var apiService = context.ServiceProvider.GetRequiredService<ICouchbaseApiService>();
+                    var apiService = context.Services.GetRequiredService<ICouchbaseApiService>();
                     var api = apiService.GetApi(builder.Resource.Cluster);
 
                     var server = builder.Resource.Cluster.GetPrimaryServer();
@@ -242,7 +242,7 @@ public static class CouchbaseBucketBuilderExtensions
                         return new ExecuteCommandResult
                         {
                             Success = false,
-                            ErrorMessage = "No available server to flush the bucket."
+                            Message = "No available server to flush the bucket."
                         };
                     }
 

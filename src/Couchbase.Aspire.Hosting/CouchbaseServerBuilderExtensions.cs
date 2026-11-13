@@ -261,7 +261,7 @@ internal static class CouchbaseServerBuilderExtensions
         {
             builder.WithContainerFiles("/opt/couchbase/var/lib/couchbase", async (context, ct) =>
             {
-                var provider = context.ServiceProvider.GetRequiredService<CouchbaseNodeCertificateProvider>();
+                var provider = context.Services.GetRequiredService<CouchbaseNodeCertificateProvider>();
 
                 return provider.AttachNodeCertificate(builder.Resource);
             });

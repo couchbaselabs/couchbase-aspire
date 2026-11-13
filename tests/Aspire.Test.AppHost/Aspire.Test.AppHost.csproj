@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.2.4">
+<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UserSecretsId>4e41d85e-5551-4566-9675-cc7ff2f97f16</UserSecretsId>
+    <!-- Resolve DCP and the dashboard from the Aspire CLI bundle. Uses the aspire CLI on PATH, or falls back
+         to dnx (.NET 10 SDK) to fetch the CLI version paired with the AppHost SDK, which is what CI uses. -->
+    <AspireUseCliBundle>true</AspireUseCliBundle>
   </PropertyGroup>
 
   <ItemGroup>

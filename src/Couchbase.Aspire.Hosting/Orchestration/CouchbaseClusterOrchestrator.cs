@@ -103,7 +103,7 @@ internal sealed class CouchbaseClusterOrchestrator
 
         _orchestratorEvents.Subscribe<OnCouchbaseResourceStartingEvent>(async (@event, ct) =>
         {
-            var beforeResourceStartedEvent = new BeforeResourceStartedEvent(@event.Resource, _executionContext.ServiceProvider);
+            var beforeResourceStartedEvent = new BeforeResourceStartedEvent(@event.Resource, _executionContext.Services);
             await _eventing.PublishAsync(beforeResourceStartedEvent, ct).ConfigureAwait(false);
 
             await PublishUpdateToHierarchyAsync(@event.Resource, (_, s) => s with
@@ -127,9 +127,9 @@ internal sealed class CouchbaseClusterOrchestrator
 
             // Since this is a custom resource, we must publish these events manually to trigger URLs, connection strings,
             // and health checks.
-            await _eventing.PublishAsync(new ResourceEndpointsAllocatedEvent(@event.Resource, _executionContext.ServiceProvider), ct)
+            await _eventing.PublishAsync(new ResourceEndpointsAllocatedEvent(@event.Resource, _executionContext.Services), ct)
                 .ConfigureAwait(false);
-            await _eventing.PublishAsync(new ConnectionStringAvailableEvent(@event.Resource, _executionContext.ServiceProvider), ct)
+            await _eventing.PublishAsync(new ConnectionStringAvailableEvent(@event.Resource, _executionContext.Services), ct)
                 .ConfigureAwait(false);
 
             await PublishUpdateToHierarchyAsync(@event.Resource, (r, s) => s with
@@ -175,7 +175,7 @@ internal sealed class CouchbaseClusterOrchestrator
 
             if (_resourceNotificationService.TryGetCurrentState(@event.Resource.Name, out var currentResourceEvent))
             {
-                await _eventing.PublishAsync(new ResourceStoppedEvent(@event.Resource, _executionContext.ServiceProvider, currentResourceEvent), ct).ConfigureAwait(false);
+                await _eventing.PublishAsync(new ResourceStoppedEvent(@event.Resource, _executionContext.Services, currentResourceEvent), ct).ConfigureAwait(false);
             }
         });
     }
