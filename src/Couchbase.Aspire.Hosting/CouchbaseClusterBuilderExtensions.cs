@@ -199,7 +199,7 @@ public static partial class CouchbaseClusterBuilderExtensions
             })
             .WithCommand(KnownResourceCommands.StartCommand, "Start", async (context) =>
             {
-                var orchestrator = context.ServiceProvider.GetRequiredService<CouchbaseClusterOrchestrator>();
+                var orchestrator = context.Services.GetRequiredService<CouchbaseClusterOrchestrator>();
 
                 await orchestrator.StartResourceAsync(cluster, context.CancellationToken).ConfigureAwait(false);
 
@@ -229,7 +229,7 @@ public static partial class CouchbaseClusterBuilderExtensions
             })
             .WithCommand(KnownResourceCommands.StopCommand, "Stop", async (context) =>
             {
-                var orchestrator = context.ServiceProvider.GetRequiredService<CouchbaseClusterOrchestrator>();
+                var orchestrator = context.Services.GetRequiredService<CouchbaseClusterOrchestrator>();
 
                 await orchestrator.StopResourceAsync(cluster, context.CancellationToken).ConfigureAwait(false);
 
