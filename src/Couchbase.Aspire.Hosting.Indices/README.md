@@ -4,6 +4,10 @@ Provides extension methods and resource definitions to add index management to a
 
 ## Getting Started
 
+### Prerequisites
+
+- Aspire 13.6.5 or later. The AppHost must use `Aspire.AppHost.Sdk` 13.6.5 or later, and any direct `Aspire.Hosting` reference must be 13.6.5 or later.
+
 ### Install the package
 
 ```dotnetcli
